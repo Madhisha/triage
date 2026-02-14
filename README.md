@@ -359,7 +359,7 @@ NEWS2 Score: 12 (High Risk - Immediate Clinical Response)
 
 - **Stacking (Logistic Regression): 70.89% accuracy, 67.23% macro F1**
 
-```
+
 
 ### Essential Files for Production
 
@@ -382,4 +382,3 @@ These files are required to run the prediction service:
 
 _Without `shap_background.csv`, predictions still work but explanations are limited to NEWS2 scores only._
 
-```
