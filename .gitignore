@@ -1,0 +1,73 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Machine Learning Models (large binary files)
+*.pkl
+*.h5
+*.hdf5
+*.joblib
+ml_model/base_models/
+ml_model/ensemble_model/
+
+
+# Processed Data (keep raw data, ignore processed)
+ml_model/ml_processed_data/
+rule_based/rule_processed_data/
+
+# XAI outputs (generated visualizations)
+hybrid_triage/xai_outputs/
+
+# Results and logs
+*.csv
+*.txt
+!requirements.txt
+visuals/
+
+# Raw data (large CSV files)
+raw_data/
+
+# OS
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
+*.bak
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/

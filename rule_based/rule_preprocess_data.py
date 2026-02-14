@@ -1,0 +1,113 @@
+import pandas as pd
+import os
+import glob
+import sys
+
+# Define reasonable ranges for physiological variables
+# Values outside these ranges are considered "impossible" or extreme outliers
+VALID_RANGES = {
+    "temperature": (91.4, 107.6),
+    "heartrate": (10, 300),
+    "resprate": (3, 60),
+    "o2sat": (60, 100),
+    "sbp": (30, 300),
+    "dbp": (30, 300),
+    "pain": (0, 10)
+}
+
+def clip_impossible_values(df):
+    """
+    Clip values outside of VALID_RANGES to range limits.
+    Used for rule-based triage to preserve all samples.
+    """
+    df_clean = df.copy()
+    
+    for col, (min_val, max_val) in VALID_RANGES.items():
+        if col in df_clean.columns:
+            df_clean[col] = df_clean[col].clip(lower=min_val, upper=max_val)
+    
+    print("Clipped values to defined ranges.")
+    print(f"Rows remaining: {len(df_clean)}")
+    
+    return df_clean
+
+
+
+def preprocess_file(input_file, output_file):
+    print(f"Processing {input_file}...")
+    if not os.path.exists(input_file):
+        print(f"Error: {input_file} not found.")
+        return
+
+    df = pd.read_csv(input_file)
+    original_len = len(df)
+    
+    # 1. Remove stay_id, subject_id, chiefcomplaint
+    cols_to_drop = ['subject_id', 'stay_id', 'chiefcomplaint']
+    existing_cols_to_drop = [c for c in cols_to_drop if c in df.columns]
+    if existing_cols_to_drop:
+        df.drop(columns=existing_cols_to_drop, inplace=True)
+        print(f"Dropped columns: {existing_cols_to_drop}")
+    
+    # 2. Remove duplicate rows
+    # Note: We drop duplicates AFTER removing IDs, because rows might be identical except for ID
+    duplicates_count = df.duplicated().sum()
+    df.drop_duplicates(inplace=True)
+    print(f"Removed {duplicates_count} duplicate rows.")
+    
+    # Ensure columns are numeric
+    for col in VALID_RANGES.keys():
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    # 3. Remove missing rows
+    missing_rows_count = df.isnull().any(axis=1).sum()
+    df.dropna(inplace=True)
+    print(f"Removed {missing_rows_count} rows with missing values.")
+    
+    # 4. Clip values to valid ranges (for rule-based triage)
+    df = clip_impossible_values(df)
+    
+    # No scaling - keep original values for NEWS2 scoring
+    print("Skipping scaling - keeping original values for rule-based triage.")
+    
+    print(f"Final shape: {df.shape} (Original rows: {original_len})")
+    
+    df.to_csv(output_file, index=False)
+    print(f"Saved rule-based data to {output_file}")
+
+if __name__ == "__main__":
+    input_dir = "../raw_data"
+    output_dir = "rule_processed_data"
+    
+    print("="*70)
+    print("PREPROCESSING FOR RULE-BASED TRIAGE (NEWS2)")
+    print("="*70)
+    print("Configuration:")
+    print("  - Clipping values to valid ranges (no row removal)")
+    print("  - No scaling (preserve original vital signs for NEWS2)")
+    print(f"  - Output directory: {output_dir}")
+    print("="*70)
+
+    # Create output directory if it doesn't exist
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        print(f"Created directory: {output_dir}")
+    
+    # Specific file mapping
+    files_map = {
+        "triage_train.csv": "rule_train.csv",
+        "triage_valid.csv": "rule_valid.csv",
+        "triage_test.csv": "rule_test.csv"
+    }
+    
+    for input_name, output_name in files_map.items():
+        input_path = os.path.join(input_dir, input_name)
+        output_path = os.path.join(output_dir, output_name)
+        
+        print(f"\n--- Processing {input_name} -> {output_name} ---")
+        preprocess_file(input_path, output_path)
+    
+    print("\n" + "="*70)
+    print("✅ Rule-based preprocessing complete!")
+    print("="*70)
