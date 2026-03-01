@@ -3,7 +3,8 @@ import numpy as np
 from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, roc_auc_score, average_precision_score
+from sklearn.preprocessing import label_binarize
 from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
 from sklearn.utils.class_weight import compute_class_weight
 from xgboost import XGBClassifier
@@ -22,6 +23,10 @@ def load_data():
     train_df = pd.read_csv("ml_processed_data/ml_processed_train.csv")
     valid_df = pd.read_csv("ml_processed_data/ml_processed_valid.csv")
     test_df = pd.read_csv("ml_processed_data/ml_processed_test.csv")
+
+    # train_df = pd.read_csv("ml_processed_data/balanced/ml_processed_train.csv")
+    # valid_df = pd.read_csv("ml_processed_data/balanced/ml_processed_valid.csv")
+    # test_df = pd.read_csv("ml_processed_data/balanced/ml_processed_test.csv")
     
     print(f"Train shape: {train_df.shape}")
     print(f"Validation shape: {valid_df.shape}")
@@ -783,7 +788,7 @@ def train_adaboost(X_train, y_train):
     return ada_model
 
 def evaluate_model(model, X, y, dataset_name="Dataset", is_xgb=False, is_catboost=False, is_lightgbm=False, output_file=None):
-    """Evaluate model performance"""
+    """Evaluate model performance with accuracy, classification report, AUROC, and AUPRC"""
     print(f"\n{'='*60}")
     print(f"Evaluation on {dataset_name}")
     print("="*60)
@@ -797,6 +802,56 @@ def evaluate_model(model, X, y, dataset_name="Dataset", is_xgb=False, is_catboos
     # Accuracy
     accuracy = accuracy_score(y, y_pred)
     print(f"Accuracy: {accuracy:.4f}")
+    
+    # Compute AUROC and AUPRC
+    try:
+        # Get probability predictions
+        y_proba = model.predict_proba(X)
+        
+        # Adjust probabilities for XGBoost/CatBoost/LightGBM (0-indexed)
+        if is_xgb or is_catboost or is_lightgbm:
+            # For 0-indexed models, probabilities are already aligned with classes 0,1,2
+            # But we need to align them with true labels 1,2,3
+            classes = np.array([1, 2, 3])  # True class labels
+        else:
+            classes = model.classes_
+        
+        # Binarize the labels for multi-class ROC/PR computation
+        y_bin = label_binarize(y, classes=classes)
+        
+        # Handle binary classification case (returns 1D array)
+        if len(classes) == 2:
+            y_bin = np.hstack([1 - y_proba[:, 1:2], y_proba[:, 1:2]])
+        
+        # Compute macro-averaged AUROC and AUPRC
+        auroc_macro = roc_auc_score(y_bin, y_proba, average='macro', multi_class='ovr')
+        auprc_macro = average_precision_score(y_bin, y_proba, average='macro')
+        
+        # Compute weighted-averaged AUROC and AUPRC
+        auroc_weighted = roc_auc_score(y_bin, y_proba, average='weighted', multi_class='ovr')
+        auprc_weighted = average_precision_score(y_bin, y_proba, average='weighted')
+        
+        # Compute per-class AUROC and AUPRC
+        auroc_per_class = roc_auc_score(y_bin, y_proba, average=None, multi_class='ovr')
+        auprc_per_class = average_precision_score(y_bin, y_proba, average=None)
+        
+        print(f"\nAUROC (macro): {auroc_macro:.4f}")
+        print(f"AUROC (weighted): {auroc_weighted:.4f}")
+        print(f"AUPRC (macro): {auprc_macro:.4f}")
+        print(f"AUPRC (weighted): {auprc_weighted:.4f}")
+        
+        print("\nPer-class AUROC:")
+        for i, cls in enumerate(classes):
+            print(f"  Class {cls}: {auroc_per_class[i]:.4f}")
+        
+        print("\nPer-class AUPRC:")
+        for i, cls in enumerate(classes):
+            print(f"  Class {cls}: {auprc_per_class[i]:.4f}")
+        
+    except Exception as e:
+        print(f"\nWarning: Could not compute AUROC/AUPRC: {e}")
+        auroc_macro = auroc_weighted = auprc_macro = auprc_weighted = None
+        auroc_per_class = auprc_per_class = None
     
     # Classification Report
     report = classification_report(y, y_pred, zero_division=0)
@@ -815,6 +870,21 @@ def evaluate_model(model, X, y, dataset_name="Dataset", is_xgb=False, is_catboos
             f.write(f"Evaluation on {dataset_name}\n")
             f.write("="*60 + "\n")
             f.write(f"Accuracy: {accuracy:.4f}\n")
+            
+            if auroc_macro is not None:
+                f.write(f"\nAUROC (macro): {auroc_macro:.4f}\n")
+                f.write(f"AUROC (weighted): {auroc_weighted:.4f}\n")
+                f.write(f"AUPRC (macro): {auprc_macro:.4f}\n")
+                f.write(f"AUPRC (weighted): {auprc_weighted:.4f}\n")
+                
+                f.write("\nPer-class AUROC:\n")
+                for i, cls in enumerate(classes):
+                    f.write(f"  Class {cls}: {auroc_per_class[i]:.4f}\n")
+                
+                f.write("\nPer-class AUPRC:\n")
+                for i, cls in enumerate(classes):
+                    f.write(f"  Class {cls}: {auprc_per_class[i]:.4f}\n")
+            
             f.write("\nClassification Report:\n")
             f.write(report + "\n")
             f.write("\nConfusion Matrix:\n")
@@ -1075,7 +1145,8 @@ def main():
     if do_train_adaboost:
         adaboost_model = train_adaboost(X_train, y_train)
         evaluate_model(adaboost_model, X_valid, y_valid, "Validation Set (AdaBoost)", output_file=results_file)
-        # save_model(adaboost_model, "ml_adaboost_model.pkl")    
+        # save_model(adaboost_model, "ml_adaboost_model.pkl")
+    
     # Final evaluation on test set
     print("\n" + "#"*60)
     print("FINAL EVALUATION ON TEST SET")

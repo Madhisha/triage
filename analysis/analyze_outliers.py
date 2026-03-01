@@ -46,7 +46,6 @@ def detect_physiological_outliers(data, column):
     return outliers, min_val, max_val, len(outliers), outlier_types
 
 
-
 def detect_outliers_iqr(data, column):
     """
     Detect outliers using IQR method (for comparison)
@@ -285,9 +284,9 @@ def main():
     
     # Load datasets
     print("\nLoading datasets...")
-    train_df = pd.read_csv('raw_data/triage_train.csv')
-    test_df = pd.read_csv('raw_data/triage_test.csv')
-    valid_df = pd.read_csv('raw_data/triage_valid.csv')
+    train_df = pd.read_csv('../raw_data/triage_train.csv')
+    test_df = pd.read_csv('../raw_data/triage_test.csv')
+    valid_df = pd.read_csv('../raw_data/triage_valid.csv')
     print(f"Train: {len(train_df)} records")
     print(f"Test: {len(test_df)} records")
     print(f"Validation: {len(valid_df)} records")

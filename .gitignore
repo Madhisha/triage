@@ -45,6 +45,12 @@ rule_based/rule_processed_data/
 # XAI outputs (generated visualizations)
 hybrid_triage/xai_outputs/
 
+# eda outputs
+analysis/eda_plots/
+
+# roc curves
+ml_model/roc_curves/
+
 # Results and logs
 *.csv
 *.txt
