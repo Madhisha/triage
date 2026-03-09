@@ -51,6 +51,9 @@ analysis/eda_plots/
 # roc curves
 ml_model/roc_curves/
 
+# baseline results
+baseline_results/
+
 # Results and logs
 *.csv
 *.txt

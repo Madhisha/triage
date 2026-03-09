@@ -396,8 +396,8 @@ def analyze_outliers(df, dataset_name):
     }
     
     print("Outlier Detection (Physiological Range + IQR Method):\n")
-    print(f"{'Feature':<15} {'Physio_Out':>12} {'IQR_Out':>12} {'Total_Valid':>12} {'Outlier_%':>12}")
-    print("-" * 70)
+    print(f"{'Feature':<15} {'Physio_Out':>12} {'IQR_Out':>12} {'Total_Valid':>12} {'Physio_%':>12} {'IQR_%':>12}")
+    print("-" * 85)
     
     outlier_data = []
     
@@ -417,9 +417,10 @@ def analyze_outliers(df, dataset_name):
             iqr_out = ((data < (Q1 - 1.5 * IQR)) | (data > (Q3 + 1.5 * IQR))).sum()
             
             total_valid = len(data)
-            outlier_pct = (physio_out / total_valid * 100) if total_valid > 0 else 0
+            physio_pct = (physio_out / total_valid * 100) if total_valid > 0 else 0
+            iqr_pct = (iqr_out / total_valid * 100) if total_valid > 0 else 0
             
-            print(f"{col:<15} {physio_out:>12,} {iqr_out:>12,} {total_valid:>12,} {outlier_pct:>11.2f}%")
+            print(f"{col:<15} {physio_out:>12,} {iqr_out:>12,} {total_valid:>12,} {physio_pct:>11.2f}% {iqr_pct:>11.2f}%")
             
             outlier_data.append({
                 'Feature': col,
