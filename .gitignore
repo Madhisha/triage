@@ -89,3 +89,8 @@ venv.bak/
 catboost_info/
 autogluon_models/
 
+*.ps1
+*.cmd
+*.bat
+eslint
+esbuild
