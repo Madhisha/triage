@@ -58,6 +58,187 @@ def prepare_features_target(df, target_col='acuity', merge_classes=False):
     
     return X, y
 
+def train_random_forest(X_train, y_train, max_features='log2', n_estimators=1000):
+    """Train Random Forest Classifier (optimized for text + numeric features)"""
+    print("\n" + "="*60)
+    print("Training Random Forest Classifier (with Chief Complaint)...")
+    print("="*60)
+    print(f"Note: Using max_features='{max_features}', n_estimators={n_estimators}")
+    
+    rf_model = RandomForestClassifier(
+        n_estimators=n_estimators,
+        max_depth=None,
+        min_samples_split=2,
+        min_samples_leaf=1,
+        max_features=max_features,  # Tunable parameter
+        class_weight='balanced',
+        random_state=42,
+        n_jobs=-1,
+        verbose=1
+    )
+    
+    rf_model.fit(X_train, y_train)
+    print("Random Forest training completed.")
+    return rf_model
+
+def train_logistic_regression(X_train, y_train):
+    """Train Logistic Regression (works well with TF-IDF features)"""
+    print("\n" + "="*60)
+    print("Training Logistic Regression (with Chief Complaint)...")
+    print("="*60)
+    print("Note: LR is effective for text classification tasks.")
+    
+    lr_model = LogisticRegression(
+        max_iter=2000,  # Increased for convergence with more features
+        multi_class='multinomial',
+        solver='lbfgs',
+        class_weight='balanced',
+        C=1.0,  # Regularization strength
+        random_state=42,
+        verbose=1
+    )
+    
+    lr_model.fit(X_train, y_train)
+    print("Logistic Regression training completed.")
+    return lr_model
+
+def train_xgboost(X_train, y_train, n_estimators=1000):
+    """Train XGBoost Classifier (handles sparse features well)"""
+    print("\n" + "="*60)
+    print("Training XGBoost Classifier (with Chief Complaint)...")
+    print("="*60)
+    print(f"Note: Using n_estimators={n_estimators}")
+    
+    # Convert labels to 0-indexed for XGBoost (1,2,3,4,5 -> 0,1,2,3,4)
+    y_train_xgb = y_train - 1
+    
+    # Compute class weights for XGBoost
+    classes = np.unique(y_train_xgb)
+    class_weights = compute_class_weight('balanced', classes=classes, y=y_train_xgb)
+    sample_weights = np.array([class_weights[int(y)] for y in y_train_xgb])
+    
+    xgb_model = XGBClassifier(
+        n_estimators=n_estimators,  # Increased for complex patterns
+        max_depth=12,  # Moderate depth for text features
+        learning_rate=0.05,  # Lower for better generalization
+        subsample=0.8,
+        colsample_bytree=0.6,  # Reduced to handle many features
+        min_child_weight=3,
+        gamma=0.1,
+        random_state=42,
+        n_jobs=-1,
+        verbosity=1,
+        eval_metric='mlogloss'
+    )
+    
+    xgb_model.fit(X_train, y_train_xgb, sample_weight=sample_weights)
+    print("XGBoost training completed.")
+    return xgb_model
+
+def train_mlp(X_train, y_train):
+    """Train Multi-Layer Perceptron (good for text + numeric features)"""
+    print("\n" + "="*60)
+    print("Training MLP Classifier (with Chief Complaint)...")
+    print("="*60)
+    print("Note: Neural networks can learn complex text patterns.")
+    print("Using early stopping to prevent overfitting.")
+    
+    mlp_model = MLPClassifier(
+        hidden_layer_sizes=(512, 256, 128),  # Larger layers for more features
+        activation='relu',
+        solver='adam',
+        alpha=0.001,  # L2 regularization
+        batch_size=32,
+        learning_rate='adaptive',
+        learning_rate_init=0.0001,
+        max_iter=500,
+        random_state=42,
+        verbose=True,
+        early_stopping=True,
+        validation_fraction=0.1,
+        n_iter_no_change=15,
+        tol=1e-4
+    )
+    
+    mlp_model.fit(X_train, y_train)
+    print("MLP training completed.")
+    return mlp_model
+
+def train_lightgbm(X_train, y_train):
+    """Train LightGBM Classifier (fast and efficient for large datasets)"""
+    print("\n" + "="*60)
+    print("Training LightGBM Classifier (with Chief Complaint)...")
+    print("="*60)
+    print("Note: LightGBM is very fast and memory efficient.")
+    
+    # Convert labels to 0-indexed for LightGBM
+    y_train_lgb = y_train - 1
+    
+    # Compute class weights
+    classes = np.unique(y_train_lgb)
+    class_weights = compute_class_weight('balanced', classes=classes, y=y_train_lgb)
+    sample_weights = np.array([class_weights[int(y)] for y in y_train_lgb])
+    
+    lgb_model = LGBMClassifier(
+        n_estimators=500,
+        max_depth=15,
+        learning_rate=0.05,
+        num_leaves=20,
+        min_child_samples=10,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        random_state=42,
+        n_jobs=-1,
+        verbose=-1
+    )
+    
+    lgb_model.fit(X_train, y_train_lgb, sample_weight=sample_weights)
+    print("LightGBM training completed.")
+    return lgb_model
+
+def train_catboost(X_train, y_train):
+    """Train CatBoost Classifier (handles categorical and text features natively)"""
+    print("\n" + "="*60)
+    print("Training CatBoost Classifier (with Chief Complaint)...")
+    print("="*60)
+    
+    y_train_cat = y_train - 1
+    classes = np.unique(y_train_cat)
+    class_weights = compute_class_weight('balanced', classes=classes, y=y_train_cat)
+    class_weight_dict = {i: class_weights[i] for i in range(len(class_weights))}
+    
+    cat_model = CatBoostClassifier(
+        iterations=500,
+        depth=8,
+        learning_rate=0.05,
+        l2_leaf_reg=3,
+        class_weights=class_weight_dict,
+        random_seed=42,
+        verbose=100,
+        loss_function='MultiClass'
+    )
+    
+    cat_model.fit(X_train, y_train_cat)
+    print("CatBoost training completed.")
+    return cat_model
+
+def train_adaboost(X_train, y_train):
+    """Train AdaBoost Classifier"""
+    print("\n" + "="*60)
+    print("Training AdaBoost Classifier...")
+    print("="*60)
+    print("Note: AdaBoost focuses on misclassified samples.")
+    
+    ada_model = AdaBoostClassifier(
+        n_estimators=100,
+        learning_rate=0.5,
+        random_state=42
+    )
+    
+    ada_model.fit(X_train, y_train)
+    print("AdaBoost training completed.")
+    return ada_model
+
 def tune_random_forest_random(X_train, y_train, n_iter=100):
     """Tune Random Forest using RandomizedSearchCV with massive grid"""
     print("\n" + "="*60)
@@ -645,111 +826,6 @@ def tune_lightgbm_bayesian(X_train, y_train, n_trials=30):
     
     return best_model
 
-def train_random_forest(X_train, y_train, max_features='log2', n_estimators=1000):
-    """Train Random Forest Classifier (optimized for text + numeric features)"""
-    print("\n" + "="*60)
-    print("Training Random Forest Classifier (with Chief Complaint)...")
-    print("="*60)
-    print(f"Note: Using max_features='{max_features}', n_estimators={n_estimators}")
-    
-    rf_model = RandomForestClassifier(
-        n_estimators=n_estimators,
-        max_depth=None,
-        min_samples_split=2,
-        min_samples_leaf=1,
-        max_features=max_features,  # Tunable parameter
-        class_weight='balanced',
-        random_state=42,
-        n_jobs=-1,
-        verbose=1
-    )
-    
-    rf_model.fit(X_train, y_train)
-    print("Random Forest training completed.")
-    return rf_model
-
-def train_logistic_regression(X_train, y_train):
-    """Train Logistic Regression (works well with TF-IDF features)"""
-    print("\n" + "="*60)
-    print("Training Logistic Regression (with Chief Complaint)...")
-    print("="*60)
-    print("Note: LR is effective for text classification tasks.")
-    
-    lr_model = LogisticRegression(
-        max_iter=2000,  # Increased for convergence with more features
-        multi_class='multinomial',
-        solver='lbfgs',
-        class_weight='balanced',
-        C=1.0,  # Regularization strength
-        random_state=42,
-        verbose=1
-    )
-    
-    lr_model.fit(X_train, y_train)
-    print("Logistic Regression training completed.")
-    return lr_model
-
-def train_xgboost(X_train, y_train, n_estimators=1000):
-    """Train XGBoost Classifier (handles sparse features well)"""
-    print("\n" + "="*60)
-    print("Training XGBoost Classifier (with Chief Complaint)...")
-    print("="*60)
-    print(f"Note: Using n_estimators={n_estimators}")
-    
-    # Convert labels to 0-indexed for XGBoost (1,2,3,4,5 -> 0,1,2,3,4)
-    y_train_xgb = y_train - 1
-    
-    # Compute class weights for XGBoost
-    classes = np.unique(y_train_xgb)
-    class_weights = compute_class_weight('balanced', classes=classes, y=y_train_xgb)
-    sample_weights = np.array([class_weights[int(y)] for y in y_train_xgb])
-    
-    xgb_model = XGBClassifier(
-        n_estimators=n_estimators,  # Increased for complex patterns
-        max_depth=12,  # Moderate depth for text features
-        learning_rate=0.05,  # Lower for better generalization
-        subsample=0.8,
-        colsample_bytree=0.6,  # Reduced to handle many features
-        min_child_weight=3,
-        gamma=0.1,
-        random_state=42,
-        n_jobs=-1,
-        verbosity=1,
-        eval_metric='mlogloss'
-    )
-    
-    xgb_model.fit(X_train, y_train_xgb, sample_weight=sample_weights)
-    print("XGBoost training completed.")
-    return xgb_model
-
-def train_mlp(X_train, y_train):
-    """Train Multi-Layer Perceptron (good for text + numeric features)"""
-    print("\n" + "="*60)
-    print("Training MLP Classifier (with Chief Complaint)...")
-    print("="*60)
-    print("Note: Neural networks can learn complex text patterns.")
-    print("Using early stopping to prevent overfitting.")
-    
-    mlp_model = MLPClassifier(
-        hidden_layer_sizes=(512, 256, 128),  # Larger layers for more features
-        activation='relu',
-        solver='adam',
-        alpha=0.001,  # L2 regularization
-        batch_size=32,
-        learning_rate='adaptive',
-        learning_rate_init=0.0001,
-        max_iter=500,
-        random_state=42,
-        verbose=True,
-        early_stopping=True,
-        validation_fraction=0.1,
-        n_iter_no_change=15,
-        tol=1e-4
-    )
-    
-    mlp_model.fit(X_train, y_train)
-    print("MLP training completed.")
-    return mlp_model
 
 # ==================== CatBoost Tuning ====================
 
@@ -888,37 +964,6 @@ def tune_catboost_bayesian(X_train, y_train, n_trials=50):
     best_model.fit(X_train, y_train_cat)
     return best_model
 
-def train_lightgbm(X_train, y_train):
-    """Train LightGBM Classifier (fast and efficient for large datasets)"""
-    print("\n" + "="*60)
-    print("Training LightGBM Classifier (with Chief Complaint)...")
-    print("="*60)
-    print("Note: LightGBM is very fast and memory efficient.")
-    
-    # Convert labels to 0-indexed for LightGBM
-    y_train_lgb = y_train - 1
-    
-    # Compute class weights
-    classes = np.unique(y_train_lgb)
-    class_weights = compute_class_weight('balanced', classes=classes, y=y_train_lgb)
-    sample_weights = np.array([class_weights[int(y)] for y in y_train_lgb])
-    
-    lgb_model = LGBMClassifier(
-        n_estimators=500,
-        max_depth=15,
-        learning_rate=0.05,
-        num_leaves=20,
-        min_child_samples=10,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        random_state=42,
-        n_jobs=-1,
-        verbose=-1
-    )
-    
-    lgb_model.fit(X_train, y_train_lgb, sample_weight=sample_weights)
-    print("LightGBM training completed.")
-    return lgb_model
 
 # ==================== AdaBoost Tuning ====================
 
@@ -1014,32 +1059,6 @@ def tune_adaboost_bayesian(X_train, y_train, n_trials=50):
     best_model = AdaBoostClassifier(**study.best_params, random_state=42)
     best_model.fit(X_train, y_train)
     return best_model
-
-def train_catboost(X_train, y_train):
-    """Train CatBoost Classifier (handles categorical and text features natively)"""
-    print("\n" + "="*60)
-    print("Training CatBoost Classifier (with Chief Complaint)...")
-    print("="*60)
-    
-    y_train_cat = y_train - 1
-    classes = np.unique(y_train_cat)
-    class_weights = compute_class_weight('balanced', classes=classes, y=y_train_cat)
-    class_weight_dict = {i: class_weights[i] for i in range(len(class_weights))}
-    
-    cat_model = CatBoostClassifier(
-        iterations=500,
-        depth=8,
-        learning_rate=0.05,
-        l2_leaf_reg=3,
-        class_weights=class_weight_dict,
-        random_seed=42,
-        verbose=100,
-        loss_function='MultiClass'
-    )
-    
-    cat_model.fit(X_train, y_train_cat)
-    print("CatBoost training completed.")
-    return cat_model
 
 # ==================== Logistic Regression Tuning ====================
 
