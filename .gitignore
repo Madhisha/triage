@@ -59,6 +59,7 @@ baseline_results/
 *.csv
 *.txt
 !requirements.txt
+walkthrough.md
 visuals/
 
 # Raw data (large CSV files)
@@ -87,3 +88,4 @@ venv.bak/
 *.json
 catboost_info/
 autogluon_models/
+
