@@ -10,8 +10,10 @@ from sklearn.utils.class_weight import compute_class_weight
 from xgboost import XGBClassifier
 from catboost import CatBoostClassifier
 from lightgbm import LGBMClassifier
+from sklearn.svm import SVC
 import joblib
 import os
+import numpy as np
 try:
     import optuna
     OPTUNA_AVAILABLE = True
@@ -56,18 +58,20 @@ def prepare_features_target(df, target_col='acuity', merge_classes=False):
     
     return X, y
 
-def tune_random_forest_random(X_train, y_train, n_iter=20):
-    """Tune Random Forest using RandomizedSearchCV"""
+def tune_random_forest_random(X_train, y_train, n_iter=100):
+    """Tune Random Forest using RandomizedSearchCV with massive grid"""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: Random Forest (RandomizedSearchCV)")
+    print("Hyperparameter Tuning: Random Forest (RandomizedSearchCV - Massive)")
     print("="*60)
     
     param_distributions = {
-        'n_estimators': [100, 200, 300, 500, 800, 1000],
-        'max_depth': [10, 20, 30, 40, None],
-        'min_samples_split': [2, 5, 10],
-        'min_samples_leaf': [1, 2, 4],
-        'max_features': ['sqrt', 'log2', 30, 50],
+        'n_estimators': np.arange(100, 3001, 100).tolist(),
+        'max_depth': [None] + np.arange(5, 51, 5).tolist(),
+        'min_samples_split': np.arange(2, 21, 2).tolist(),
+        'min_samples_leaf': np.arange(1, 11, 1).tolist(),
+        'max_features': ['sqrt', 'log2', 0.1, 0.3, 0.5, 0.7, 0.9, None],
+        'bootstrap': [True, False],
+        'criterion': ['gini', 'entropy', 'log_loss']
     }
     
     rf_base = RandomForestClassifier(
@@ -94,17 +98,19 @@ def tune_random_forest_random(X_train, y_train, n_iter=20):
     return random_search.best_estimator_
 
 def tune_random_forest_grid(X_train, y_train):
-    """Tune Random Forest using GridSearchCV"""
+    """Tune Random Forest using GridSearchCV with massive grid"""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: Random Forest (GridSearchCV)")
+    print("Hyperparameter Tuning: Random Forest (GridSearchCV - Massive)")
     print("="*60)
     
+    # Note: Using a slightly reduced grid for GridSearch to avoid infinite runtime
     param_grid = {
-        'n_estimators': [300, 500, 800, 1000],
-        'max_depth': [20, 30],
-        'min_samples_split': [5, 10],
-        'min_samples_leaf': [2, 4],
-        'max_features': ['sqrt', 30],
+        'n_estimators': [200, 500, 1000, 2000, 3000],
+        'max_depth': [None, 10, 20, 30, 40, 50],
+        'min_samples_split': [2, 5, 10, 15],
+        'min_samples_leaf': [1, 2, 4, 8],
+        'max_features': ['sqrt', 'log2', 0.1, 0.3, 0.5, 0.7, 0.9, None],
+        'criterion': ['gini', 'entropy']
     }
     
     rf_base = RandomForestClassifier(
@@ -141,11 +147,13 @@ def tune_random_forest_bayesian(X_train, y_train, n_trials=30):
     
     def objective(trial):
         params = {
-            'n_estimators': trial.suggest_int('n_estimators', 100, 1000),
-            'max_depth': trial.suggest_int('max_depth', 10, 40),
-            'min_samples_split': trial.suggest_int('min_samples_split', 2, 10),
-            'min_samples_leaf': trial.suggest_int('min_samples_leaf', 1, 4),
-            'max_features': trial.suggest_categorical('max_features', ['sqrt', 'log2', 30, 50]),
+            'n_estimators': trial.suggest_int('n_estimators', 100, 3000),
+            'max_depth': trial.suggest_categorical('max_depth', [None] + list(range(5, 51, 5))),
+            'min_samples_split': trial.suggest_int('min_samples_split', 2, 20),
+            'min_samples_leaf': trial.suggest_int('min_samples_leaf', 1, 10),
+            'max_features': trial.suggest_categorical('max_features', ['sqrt', 'log2', 0.1, 0.3, 0.5, 0.7, 0.9, None]),
+            'bootstrap': trial.suggest_categorical('bootstrap', [True, False]),
+            'criterion': trial.suggest_categorical('criterion', ['gini', 'entropy', 'log_loss']),
             'class_weight': 'balanced',
             'random_state': 42,
             'n_jobs': -1
@@ -177,10 +185,10 @@ def tune_random_forest_bayesian(X_train, y_train, n_trials=30):
 
 # ==================== XGBoost Tuning ====================
 
-def tune_xgboost_random(X_train, y_train, n_iter=20):
-    """Tune XGBoost using RandomizedSearchCV"""
+def tune_xgboost_random(X_train, y_train, n_iter=100):
+    """Tune XGBoost using RandomizedSearchCV with massive grid"""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: XGBoost (RandomizedSearchCV)")
+    print("Hyperparameter Tuning: XGBoost (RandomizedSearchCV - Massive)")
     print("="*60)
     
     y_train_xgb = y_train - 1
@@ -189,13 +197,18 @@ def tune_xgboost_random(X_train, y_train, n_iter=20):
     sample_weights = np.array([class_weights[int(y)] for y in y_train_xgb])
     
     param_distributions = {
-        'n_estimators': [100, 200, 300, 500, 800, 1000],
-        'max_depth': [3, 5, 7, 10, 12],
-        'learning_rate': [0.01, 0.03, 0.05, 0.1],
-        'subsample': [0.6, 0.8, 0.9, 1.0],
-        'colsample_bytree': [0.6, 0.7, 0.8],
-        'min_child_weight': [1, 3, 5],
-        'gamma': [0, 0.1, 0.2],
+        'n_estimators': np.arange(100, 5001, 100).tolist(),
+        'max_depth': np.arange(2, 21, 1).tolist(),
+        'learning_rate': np.logspace(-4, -0.3, 50).tolist(),
+        'subsample': np.arange(0.1, 1.05, 0.05).tolist(),
+        'colsample_bytree': np.arange(0.1, 1.05, 0.05).tolist(),
+        'colsample_bylevel': np.arange(0.1, 1.05, 0.05).tolist(),
+        'min_child_weight': np.arange(1, 31, 1).tolist(),
+        'gamma': np.arange(0, 10.1, 0.1).tolist(),
+        'reg_alpha': np.logspace(-8, 1, 20).tolist(),
+        'reg_lambda': np.logspace(-8, 1, 20).tolist(),
+        'scale_pos_weight': [1, 2, 5, 10],  # Added for imbalance handling
+        'booster': ['gbtree', 'dart']
     }
     
     xgb_base = XGBClassifier(
@@ -222,9 +235,9 @@ def tune_xgboost_random(X_train, y_train, n_iter=20):
     return random_search.best_estimator_
 
 def tune_xgboost_grid(X_train, y_train):
-    """Tune XGBoost using GridSearchCV"""
+    """Tune XGBoost using GridSearchCV with massive grid"""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: XGBoost (GridSearchCV)")
+    print("Hyperparameter Tuning: XGBoost (GridSearchCV - Massive)")
     print("="*60)
     
     y_train_xgb = y_train - 1
@@ -233,12 +246,13 @@ def tune_xgboost_grid(X_train, y_train):
     sample_weights = np.array([class_weights[int(y)] for y in y_train_xgb])
     
     param_grid = {
-        'n_estimators': [200, 300, 500, 800, 1000],
-        'max_depth': [7, 10, 12],
-        'learning_rate': [0.03, 0.05],
-        'subsample': [0.8],
-        'colsample_bytree': [0.6, 0.8],
-        'min_child_weight': [3, 5],
+        'n_estimators': [500, 1000, 2000, 3000],
+        'max_depth': [4, 6, 8, 10, 14, 20],
+        'learning_rate': [0.0001, 0.001, 0.01, 0.05, 0.1, 0.2],
+        'subsample': [0.7, 0.8, 0.9],
+        'colsample_bytree': [0.6, 0.7, 0.8, 0.9],
+        'min_child_weight': [1, 3, 5, 7],
+        'gamma': [0, 0.1, 0.2]
     }
     
     xgb_base = XGBClassifier(
@@ -280,13 +294,17 @@ def tune_xgboost_bayesian(X_train, y_train, n_trials=30):
     
     def objective(trial):
         params = {
-            'n_estimators': trial.suggest_int('n_estimators', 100, 1000),
-            'max_depth': trial.suggest_int('max_depth', 3, 15),
-            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.2, log=True),
-            'subsample': trial.suggest_float('subsample', 0.6, 1.0),
-            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
-            'min_child_weight': trial.suggest_int('min_child_weight', 1, 10),
-            'gamma': trial.suggest_float('gamma', 0, 0.5),
+            'n_estimators': trial.suggest_int('n_estimators', 50, 5000),
+            'max_depth': trial.suggest_int('max_depth', 2, 20),
+            'learning_rate': trial.suggest_float('learning_rate', 1e-4, 0.5, log=True),
+            'subsample': trial.suggest_float('subsample', 0.1, 1.0),
+            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.1, 1.0),
+            'colsample_bylevel': trial.suggest_float('colsample_bylevel', 0.1, 1.0),
+            'min_child_weight': trial.suggest_int('min_child_weight', 1, 30),
+            'gamma': trial.suggest_float('gamma', 0, 10.0),
+            'reg_alpha': trial.suggest_float('reg_alpha', 1e-8, 10.0, log=True),
+            'reg_lambda': trial.suggest_float('reg_lambda', 1e-8, 10.0, log=True),
+            'booster': trial.suggest_categorical('booster', ['gbtree', 'dart']),
             'random_state': 42,
             'n_jobs': -1,
             'eval_metric': 'mlogloss'
@@ -316,28 +334,40 @@ def tune_xgboost_bayesian(X_train, y_train, n_trials=30):
 
 # ==================== MLP Tuning ====================
 
-def tune_mlp_random(X_train, y_train, n_iter=20):
-    """Tune MLP using RandomizedSearchCV"""
+def tune_mlp_random(X_train, y_train, n_iter=100):
+    """Tune MLP using RandomizedSearchCV with massive grid"""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: MLP (RandomizedSearchCV)")
+    print("Hyperparameter Tuning: MLP (RandomizedSearchCV - Massive)")
     print("="*60)
     
+    # Granular layer sizes
+    layer_options = [
+        (128,), (256,), (512,), (1024,),
+        (128, 64), (256, 128), (512, 256), (1024, 512),
+        (256, 128, 64), (512, 256, 128), (1024, 512, 256),
+        (256, 128, 64, 32), (512, 256, 128, 64)
+    ]
+    
     param_distributions = {
-        'hidden_layer_sizes': [(128, 64), (256, 128), (256, 128, 64), (512, 256, 128)],
-        'activation': ['relu', 'tanh'],
-        'alpha': [0.0001, 0.001, 0.01],
-        'learning_rate_init': [0.0001, 0.001, 0.01],
-        'batch_size': ['auto', 32, 64],
+        'hidden_layer_sizes': layer_options,
+        'activation': ['relu', 'tanh', 'logistic', 'identity'],
+        'solver': ['adam', 'sgd', 'lbfgs'],
+        'alpha': np.logspace(-6, -1, 30).tolist(),
+        'batch_size': [16, 32, 64, 128, 256, 'auto'],
+        'learning_rate': ['constant', 'invscaling', 'adaptive'],
+        'learning_rate_init': np.logspace(-5, -1, 30).tolist(),
+        'max_iter': [200, 500, 1000, 2000],
+        'early_stopping': [True, False],
+        'validation_fraction': np.linspace(0.05, 0.2, 5).tolist(),
+        'n_iter_no_change': np.arange(5, 31, 5).tolist(),
+        'tol': np.logspace(-5, -2, 10).tolist(),
+        'momentum': np.linspace(0.0, 1.0, 11).tolist(),
+        'power_t': np.linspace(0.1, 1.0, 10).tolist()
     }
     
     mlp_base = MLPClassifier(
-        solver='adam',
-        max_iter=500,
         random_state=42,
-        early_stopping=True,
-        validation_fraction=0.1,
-        n_iter_no_change=15,
-        tol=1e-4
+        verbose=False  # Set to False to keep CV output clean
     )
     
     random_search = RandomizedSearchCV(
@@ -358,26 +388,27 @@ def tune_mlp_random(X_train, y_train, n_iter=20):
     return random_search.best_estimator_
 
 def tune_mlp_grid(X_train, y_train):
-    """Tune MLP using GridSearchCV"""
+    """Tune MLP using GridSearchCV with massive grid"""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: MLP (GridSearchCV)")
+    print("Hyperparameter Tuning: MLP (GridSearchCV - Massive)")
     print("="*60)
     
+    # Note: Very reduced grid for GridSearch
     param_grid = {
-        'hidden_layer_sizes': [(256, 128, 64), (512, 256, 128)],
-        'alpha': [0.001, 0.01],
-        'learning_rate_init': [0.001],
+        'hidden_layer_sizes': [(100,), (256,), (512,), (100, 50), (256, 128), (512, 256, 128)],
+        'activation': ['tanh', 'relu'],
+        'solver': ['sgd', 'adam'],
+        'alpha': [0.0001, 0.001, 0.01],
+        'learning_rate': ['constant', 'adaptive'],
+        'learning_rate_init': [0.001, 0.0001],
+        'max_iter': [500, 1000],
+        'batch_size': [32, 64],
+        'early_stopping': [True]
     }
     
     mlp_base = MLPClassifier(
-        activation='relu',
-        solver='adam',
-        max_iter=500,
         random_state=42,
-        early_stopping=True,
-        validation_fraction=0.1,
-        n_iter_no_change=15,
-        tol=1e-4
+        verbose=False
     )
     
     grid_search = GridSearchCV(
@@ -408,24 +439,27 @@ def tune_mlp_bayesian(X_train, y_train, n_trials=30):
     
     def objective(trial):
         # Suggest network architecture
-        n_layers = trial.suggest_int('n_layers', 2, 4)
+        n_layers = trial.suggest_int('n_layers', 1, 5)
         layers = []
         for i in range(n_layers):
-            layers.append(trial.suggest_categorical(f'n_units_l{i}', [64, 128, 256, 512]))
+            layers.append(trial.suggest_categorical(f'n_units_l{i}', [32, 64, 128, 256, 512, 1024]))
         
         params = {
             'hidden_layer_sizes': tuple(layers),
-            'activation': trial.suggest_categorical('activation', ['relu', 'tanh']),
-            'alpha': trial.suggest_float('alpha', 1e-5, 1e-1, log=True),
-            'learning_rate_init': trial.suggest_float('learning_rate_init', 1e-4, 1e-2, log=True),
-            'batch_size': trial.suggest_categorical('batch_size', [32, 64, 'auto']),
-            'solver': 'adam',
-            'max_iter': 500,
+            'activation': trial.suggest_categorical('activation', ['relu', 'tanh', 'logistic', 'identity']),
+            'solver': trial.suggest_categorical('solver', ['adam', 'sgd', 'lbfgs']),
+            'alpha': trial.suggest_float('alpha', 1e-6, 1e-1, log=True),
+            'batch_size': trial.suggest_categorical('batch_size', [16, 32, 64, 128, 256, 'auto']),
+            'learning_rate': trial.suggest_categorical('learning_rate', ['constant', 'invscaling', 'adaptive']),
+            'learning_rate_init': trial.suggest_float('learning_rate_init', 1e-5, 1e-1, log=True),
+            'max_iter': trial.suggest_categorical('max_iter', [200, 500, 1000, 2000]),
             'random_state': 42,
-            'early_stopping': True,
-            'validation_fraction': 0.1,
-            'n_iter_no_change': 15,
-            'tol': 1e-4
+            'early_stopping': trial.suggest_categorical('early_stopping', [True, False]),
+            'validation_fraction': trial.suggest_float('validation_fraction', 0.05, 0.2),
+            'n_iter_no_change': trial.suggest_int('n_iter_no_change', 5, 30),
+            'tol': trial.suggest_float('tol', 1e-5, 1e-2, log=True),
+            'momentum': trial.suggest_float('momentum', 0.0, 1.0),
+            'power_t': trial.suggest_float('power_t', 0.1, 1.0)
         }
         
         mlp = MLPClassifier(**params)
@@ -465,10 +499,10 @@ def tune_mlp_bayesian(X_train, y_train, n_trials=30):
 
 # ==================== LightGBM Tuning ====================
 
-def tune_lightgbm_random(X_train, y_train, n_iter=20):
-    """Tune LightGBM using RandomizedSearchCV"""
+def tune_lightgbm_random(X_train, y_train, n_iter=100):
+    """Tune LightGBM using RandomizedSearchCV with massive grid"""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: LightGBM (RandomizedSearchCV)")
+    print("Hyperparameter Tuning: LightGBM (RandomizedSearchCV - Massive)")
     print("="*60)
     
     y_train_lgb = y_train - 1
@@ -477,13 +511,16 @@ def tune_lightgbm_random(X_train, y_train, n_iter=20):
     sample_weights = np.array([class_weights[int(y)] for y in y_train_lgb])
     
     param_distributions = {
-        'n_estimators': [100, 200, 300, 500, 800, 1000],
-        'max_depth': [5, 10, 15, 20, -1],
-        'learning_rate': [0.01, 0.03, 0.05, 0.1],
-        'num_leaves': [20, 31, 50, 70],
-        'min_child_samples': [10, 20, 30],
-        'subsample': [0.6, 0.8, 1.0],
-        'colsample_bytree': [0.6, 0.8, 1.0],
+        'n_estimators': np.arange(100, 5001, 100).tolist(),
+        'max_depth': [-1] + np.arange(5, 51, 5).tolist(),
+        'learning_rate': np.logspace(-4, -0.3, 50).tolist(),
+        'num_leaves': np.arange(20, 501, 20).tolist(),
+        'min_child_samples': np.arange(5, 101, 5).tolist(),
+        'subsample': np.arange(0.1, 1.05, 0.05).tolist(),
+        'colsample_bytree': np.arange(0.1, 1.05, 0.05).tolist(),
+        'reg_alpha': np.logspace(-8, 1, 20).tolist(),
+        'reg_lambda': np.logspace(-8, 1, 20).tolist(),
+        'boosting_type': ['gbdt', 'dart']
     }
     
     lgb_base = LGBMClassifier(
@@ -510,9 +547,9 @@ def tune_lightgbm_random(X_train, y_train, n_iter=20):
     return random_search.best_estimator_
 
 def tune_lightgbm_grid(X_train, y_train):
-    """Tune LightGBM using GridSearchCV"""
+    """Tune LightGBM using GridSearchCV with massive grid"""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: LightGBM (GridSearchCV)")
+    print("Hyperparameter Tuning: LightGBM (GridSearchCV - Massive)")
     print("="*60)
     
     y_train_lgb = y_train - 1
@@ -520,13 +557,16 @@ def tune_lightgbm_grid(X_train, y_train):
     class_weights = compute_class_weight('balanced', classes=classes, y=y_train_lgb)
     sample_weights = np.array([class_weights[int(y)] for y in y_train_lgb])
     
+    # Reduced grid for GridSearch
     param_grid = {
-        'n_estimators': [300, 500, 800, 1000],
-        'max_depth': [10, 15],
-        'learning_rate': [0.03, 0.05],
-        'num_leaves': [31, 50],
-        'subsample': [0.8],
-        'colsample_bytree': [0.8],
+        'n_estimators': [500, 1000, 2000, 3000],
+        'max_depth': [-1, 10, 20, 30, 50],
+        'learning_rate': [0.001, 0.01, 0.05, 0.1, 0.2],
+        'num_leaves': [15, 31, 63, 127],
+        'min_child_samples': [10, 20, 30, 50],
+        'subsample': [0.6, 0.8, 1.0],
+        'colsample_bytree': [0.6, 0.8, 1.0],
+        'boosting_type': ['gbdt', 'dart']
     }
     
     lgb_base = LGBMClassifier(
@@ -568,13 +608,16 @@ def tune_lightgbm_bayesian(X_train, y_train, n_trials=30):
     
     def objective(trial):
         params = {
-            'n_estimators': trial.suggest_int('n_estimators', 100, 1000),
-            'max_depth': trial.suggest_int('max_depth', 5, 25),
-            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.2, log=True),
-            'num_leaves': trial.suggest_int('num_leaves', 20, 100),
-            'min_child_samples': trial.suggest_int('min_child_samples', 10, 50),
-            'subsample': trial.suggest_float('subsample', 0.5, 1.0),
-            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
+            'n_estimators': trial.suggest_int('n_estimators', 50, 5000),
+            'max_depth': trial.suggest_categorical('max_depth', [-1] + list(range(5, 51, 5))),
+            'learning_rate': trial.suggest_float('learning_rate', 1e-4, 0.5, log=True),
+            'num_leaves': trial.suggest_int('num_leaves', 20, 1000),
+            'min_child_samples': trial.suggest_int('min_child_samples', 5, 200),
+            'subsample': trial.suggest_float('subsample', 0.1, 1.0),
+            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.1, 1.0),
+            'reg_alpha': trial.suggest_float('reg_alpha', 1e-8, 10.0, log=True),
+            'reg_lambda': trial.suggest_float('reg_lambda', 1e-8, 10.0, log=True),
+            'boosting_type': trial.suggest_categorical('boosting_type', ['gbdt', 'dart']),
             'random_state': 42,
             'n_jobs': -1,
             'verbose': -1
@@ -708,35 +751,142 @@ def train_mlp(X_train, y_train):
     print("MLP training completed.")
     return mlp_model
 
-def train_catboost(X_train, y_train):
-    """Train CatBoost Classifier (handles categorical and text features natively)"""
+# ==================== CatBoost Tuning ====================
+
+def tune_catboost_random(X_train, y_train, n_iter=50):
+    """Tune CatBoost using RandomizedSearchCV with massive grid"""
     print("\n" + "="*60)
-    print("Training CatBoost Classifier (with Chief Complaint)...")
+    print("Hyperparameter Tuning: CatBoost (RandomizedSearchCV - Massive)")
     print("="*60)
-    print("Note: CatBoost is robust and handles imbalanced data well.")
     
-    # Convert labels to 0-indexed for CatBoost
     y_train_cat = y_train - 1
-    
-    # Compute class weights
     classes = np.unique(y_train_cat)
     class_weights = compute_class_weight('balanced', classes=classes, y=y_train_cat)
     class_weight_dict = {i: class_weights[i] for i in range(len(class_weights))}
     
-    cat_model = CatBoostClassifier(
-        iterations=500,
-        depth=8,
-        learning_rate=0.05,
-        l2_leaf_reg=3,
-        class_weights=class_weight_dict,
-        random_seed=42,
-        verbose=100,
-        loss_function='MultiClass'
+    param_distributions = {
+        'iterations': np.arange(100, 3001, 100).tolist(),
+        'depth': np.arange(2, 13, 1).tolist(),
+        'learning_rate': np.logspace(-3, -0.3, 30).tolist(),
+        'l2_leaf_reg': np.logspace(0, 2, 20).tolist(),
+        'border_count': [32, 64, 128, 255],
+        'thread_count': [-1],
+        'random_seed': [42]
+    }
+    
+    cat_base = CatBoostClassifier(
+        loss_function='MultiClass',
+        verbose=False,
+        class_weights=class_weight_dict
     )
     
-    cat_model.fit(X_train, y_train_cat)
-    print("CatBoost training completed.")
-    return cat_model
+    random_search = RandomizedSearchCV(
+        cat_base,
+        param_distributions=param_distributions,
+        n_iter=n_iter,
+        cv=3,
+        scoring='accuracy',
+        n_jobs=-1,
+        verbose=2,
+        random_state=42
+    )
+    
+    random_search.fit(X_train, y_train_cat)
+    print(f"\nBest parameters: {random_search.best_params_}")
+    print(f"Best CV score: {random_search.best_score_:.4f}")
+    
+    return random_search.best_estimator_
+
+def tune_catboost_grid(X_train, y_train):
+    """Tune CatBoost using GridSearchCV with massive grid"""
+    print("\n" + "="*60)
+    print("Hyperparameter Tuning: CatBoost (GridSearchCV - Massive)")
+    print("="*60)
+    
+    y_train_cat = y_train - 1
+    classes = np.unique(y_train_cat)
+    class_weights = compute_class_weight('balanced', classes=classes, y=y_train_cat)
+    class_weight_dict = {i: class_weights[i] for i in range(len(class_weights))}
+    
+    param_grid = {
+        'iterations': [500, 1000, 2000],
+        'depth': [4, 6, 8, 10],
+        'learning_rate': [0.001, 0.01, 0.05, 0.1],
+        'l2_leaf_reg': [1, 3, 5, 9],
+        'border_count': [32, 64, 128]
+    }
+    
+    cat_base = CatBoostClassifier(
+        loss_function='MultiClass',
+        verbose=False,
+        class_weights=class_weight_dict,
+        random_seed=42
+    )
+    
+    grid_search = GridSearchCV(
+        cat_base,
+        param_grid=param_grid,
+        cv=3,
+        scoring='accuracy',
+        n_jobs=-1,
+        verbose=2
+    )
+    
+    grid_search.fit(X_train, y_train_cat)
+    print(f"\nBest parameters: {grid_search.best_params_}")
+    print(f"Best CV score: {grid_search.best_score_:.4f}")
+    
+    return grid_search.best_estimator_
+
+def tune_catboost_bayesian(X_train, y_train, n_trials=50):
+    """Tune CatBoost using Bayesian Optimization (Optuna)"""
+    if not OPTUNA_AVAILABLE:
+        print("Optuna not installed. Falling back to RandomizedSearchCV...")
+        return tune_catboost_random(X_train, y_train)
+        
+    print("\n" + "="*60)
+    print("Hyperparameter Tuning: CatBoost (Bayesian - Optuna)")
+    print("="*60)
+    
+    y_train_cat = y_train - 1
+    classes = np.unique(y_train_cat)
+    class_weights = compute_class_weight('balanced', classes=classes, y=y_train_cat)
+    class_weight_dict = {i: class_weights[i] for i in range(len(class_weights))}
+    
+    def objective(trial):
+        params = {
+            'iterations': trial.suggest_int('iterations', 100, 5000),
+            'depth': trial.suggest_int('depth', 2, 12),
+            'learning_rate': trial.suggest_float('learning_rate', 1e-4, 0.5, log=True),
+            'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-1, 100, log=True),
+            'border_count': trial.suggest_categorical('border_count', [32, 64, 128, 255]),
+            'loss_function': 'MultiClass',
+            'class_weights': class_weight_dict,
+            'random_seed': 42,
+            'verbose': False,
+            'thread_count': -1
+        }
+        
+        cat = CatBoostClassifier(**params)
+        from sklearn.model_selection import cross_val_score
+        scores = cross_val_score(cat, X_train, y_train_cat, cv=3, scoring='accuracy', n_jobs=-1)
+        return scores.mean()
+    
+    study = optuna.create_study(direction='maximize', sampler=optuna.samplers.TPESampler(seed=42))
+    study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
+    
+    print(f"\nBest parameters: {study.best_params}")
+    print(f"Best CV score: {study.best_value:.4f}")
+    
+    best_params = study.best_params
+    best_params['loss_function'] = 'MultiClass'
+    best_params['class_weights'] = class_weight_dict
+    best_params['random_seed'] = 42
+    best_params['verbose'] = 100
+    
+    best_model = CatBoostClassifier(**best_params)
+    best_model.fit(X_train, y_train_cat)
+    return best_model
 
 def train_lightgbm(X_train, y_train):
     """Train LightGBM Classifier (fast and efficient for large datasets)"""
@@ -770,22 +920,435 @@ def train_lightgbm(X_train, y_train):
     print("LightGBM training completed.")
     return lgb_model
 
-def train_adaboost(X_train, y_train):
-    """Train AdaBoost Classifier (adaptive boosting)"""
+# ==================== AdaBoost Tuning ====================
+
+def tune_adaboost_random(X_train, y_train, n_iter=50):
+    """Tune AdaBoost using RandomizedSearchCV with massive grid"""
     print("\n" + "="*60)
-    print("Training AdaBoost Classifier (with Chief Complaint)...")
+    print("Hyperparameter Tuning: AdaBoost (RandomizedSearchCV - Massive)")
     print("="*60)
-    print("Note: AdaBoost focuses on misclassified samples.")
     
-    ada_model = AdaBoostClassifier(
-        n_estimators=100,
-        learning_rate=0.5,
+    param_distributions = {
+        'n_estimators': np.arange(50, 3001, 50).tolist(),
+        'learning_rate': np.logspace(-3, 0.3, 30).tolist(),
+        'algorithm': ['SAMME', 'SAMME.R']
+    }
+    
+    ada_base = AdaBoostClassifier(random_state=42)
+    
+    random_search = RandomizedSearchCV(
+        ada_base,
+        param_distributions=param_distributions,
+        n_iter=n_iter,
+        cv=3,
+        scoring='accuracy',
+        n_jobs=-1,
+        verbose=2,
         random_state=42
     )
     
-    ada_model.fit(X_train, y_train)
-    print("AdaBoost training completed.")
-    return ada_model
+    random_search.fit(X_train, y_train)
+    print(f"\nBest parameters: {random_search.best_params_}")
+    print(f"Best CV score: {random_search.best_score_:.4f}")
+    
+    return random_search.best_estimator_
+
+def tune_adaboost_grid(X_train, y_train):
+    """Tune AdaBoost using GridSearchCV with massive grid"""
+    print("\n" + "="*60)
+    print("Hyperparameter Tuning: AdaBoost (GridSearchCV - Massive)")
+    print("="*60)
+    
+    param_grid = {
+        'n_estimators': [100, 500, 1000, 2000, 3000],
+        'learning_rate': [0.001, 0.01, 0.1, 0.5, 1.0, 1.5],
+        'algorithm': ['SAMME', 'SAMME.R']
+    }
+    
+    ada_base = AdaBoostClassifier(random_state=42)
+    
+    grid_search = GridSearchCV(
+        ada_base,
+        param_grid=param_grid,
+        cv=3,
+        scoring='accuracy',
+        n_jobs=-1,
+        verbose=2
+    )
+    
+    grid_search.fit(X_train, y_train)
+    print(f"\nBest parameters: {grid_search.best_params_}")
+    print(f"Best CV score: {grid_search.best_score_:.4f}")
+    
+    return grid_search.best_estimator_
+
+def tune_adaboost_bayesian(X_train, y_train, n_trials=50):
+    """Tune AdaBoost using Bayesian Optimization (Optuna)"""
+    if not OPTUNA_AVAILABLE:
+        print("Optuna not installed. Falling back to RandomizedSearchCV...")
+        return tune_adaboost_random(X_train, y_train)
+        
+    print("\n" + "="*60)
+    print("Hyperparameter Tuning: AdaBoost (Bayesian - Optuna)")
+    print("="*60)
+    
+    def objective(trial):
+        params = {
+            'n_estimators': trial.suggest_int('n_estimators', 50, 3000),
+            'learning_rate': trial.suggest_float('learning_rate', 1e-3, 2.0, log=True),
+            'algorithm': trial.suggest_categorical('algorithm', ['SAMME', 'SAMME.R']),
+            'random_state': 42
+        }
+        
+        ada = AdaBoostClassifier(**params)
+        from sklearn.model_selection import cross_val_score
+        scores = cross_val_score(ada, X_train, y_train, cv=3, scoring='accuracy', n_jobs=-1)
+        return scores.mean()
+    
+    study = optuna.create_study(direction='maximize', sampler=optuna.samplers.TPESampler(seed=42))
+    study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
+    
+    print(f"\nBest parameters: {study.best_params}")
+    print(f"Best CV score: {study.best_value:.4f}")
+    
+    best_model = AdaBoostClassifier(**study.best_params, random_state=42)
+    best_model.fit(X_train, y_train)
+    return best_model
+
+def train_catboost(X_train, y_train):
+    """Train CatBoost Classifier (handles categorical and text features natively)"""
+    print("\n" + "="*60)
+    print("Training CatBoost Classifier (with Chief Complaint)...")
+    print("="*60)
+    
+    y_train_cat = y_train - 1
+    classes = np.unique(y_train_cat)
+    class_weights = compute_class_weight('balanced', classes=classes, y=y_train_cat)
+    class_weight_dict = {i: class_weights[i] for i in range(len(class_weights))}
+    
+    cat_model = CatBoostClassifier(
+        iterations=500,
+        depth=8,
+        learning_rate=0.05,
+        l2_leaf_reg=3,
+        class_weights=class_weight_dict,
+        random_seed=42,
+        verbose=100,
+        loss_function='MultiClass'
+    )
+    
+    cat_model.fit(X_train, y_train_cat)
+    print("CatBoost training completed.")
+    return cat_model
+
+# ==================== Logistic Regression Tuning ====================
+
+def tune_logistic_regression_random(X_train, y_train, n_iter=50):
+    """Tune Logistic Regression using RandomizedSearchCV with massive grid"""
+    print("\n" + "="*60)
+    print("Hyperparameter Tuning: Logistic Regression (RandomizedSearchCV - Massive)")
+    print("="*60)
+    
+    param_distributions = [
+        # l1 penalty solvers
+        {
+            'C': np.logspace(-5, 2, 40).tolist(),
+            'penalty': ['l1'],
+            'solver': ['liblinear', 'saga'],
+            'multi_class': ['ovr', 'multinomial'],
+            'max_iter': [2000]
+        },
+        # l2 penalty solvers
+        {
+            'C': np.logspace(-5, 2, 40).tolist(),
+            'penalty': ['l2'],
+            'solver': ['lbfgs', 'newton-cg', 'newton-cholesky', 'sag', 'saga'],
+            'multi_class': ['ovr', 'multinomial'],
+            'max_iter': [2000]
+        },
+        # elasticnet penalty (saga only)
+        {
+            'C': np.logspace(-5, 2, 40).tolist(),
+            'penalty': ['elasticnet'],
+            'solver': ['saga'],
+            'l1_ratio': np.linspace(0, 1, 11).tolist(),
+            'multi_class': ['ovr', 'multinomial'],
+            'max_iter': [2000]
+        },
+        # No penalty
+        {
+            'penalty': [None],
+            'solver': ['lbfgs', 'newton-cg', 'newton-cholesky', 'sag', 'saga'],
+            'multi_class': ['ovr', 'multinomial'],
+            'max_iter': [2000]
+        }
+    ]
+    
+    lr_base = LogisticRegression(class_weight='balanced', random_state=42)
+    
+    # Filter combinations (multinomial not supported by liblinear)
+    import warnings
+    warnings.filterwarnings('ignore', category=UserWarning)
+    
+    random_search = RandomizedSearchCV(
+        lr_base,
+        param_distributions=param_distributions,
+        n_iter=n_iter,
+        cv=3,
+        scoring='accuracy',
+        n_jobs=-1,
+        verbose=1,
+        random_state=42
+    )
+    
+    random_search.fit(X_train, y_train)
+    print(f"\nBest parameters: {random_search.best_params_}")
+    print(f"Best CV score: {random_search.best_score_:.4f}")
+    
+    return random_search.best_estimator_
+
+def tune_logistic_regression_grid(X_train, y_train):
+    """Tune Logistic Regression using GridSearchCV with moderate grid"""
+    print("\n" + "="*60)
+    print("Hyperparameter Tuning: Logistic Regression (GridSearchCV - Moderate)")
+    print("="*60)
+    
+    param_grid = {
+        'C': [0.001, 0.01, 0.1, 1.0, 10.0, 50.0, 100.0],
+        'penalty': ['l1', 'l2'],
+        'solver': ['liblinear', 'saga'],
+        'multi_class': ['ovr', 'multinomial'],
+        'max_iter': [1000, 2000]
+    }
+    
+    lr_base = LogisticRegression(class_weight='balanced', max_iter=2000, random_state=42)
+    
+    grid_search = GridSearchCV(
+        lr_base,
+        param_grid=param_grid,
+        cv=3,
+        scoring='accuracy',
+        n_jobs=-1,
+        verbose=1
+    )
+    
+    grid_search.fit(X_train, y_train)
+    print(f"\nBest parameters: {grid_search.best_params_}")
+    print(f"Best CV score: {grid_search.best_score_:.4f}")
+    
+    return grid_search.best_estimator_
+
+def tune_logistic_regression_bayesian(X_train, y_train, n_trials=50):
+    """Tune Logistic Regression using Bayesian Optimization (Optuna)"""
+    if not OPTUNA_AVAILABLE:
+        print("Optuna not installed. Falling back to RandomizedSearchCV...")
+        return tune_logistic_regression_random(X_train, y_train)
+        
+    print("\n" + "="*60)
+    print("Hyperparameter Tuning: Logistic Regression (Bayesian - Optuna)")
+    print("="*60)
+    
+    def objective(trial):
+        penalty = trial.suggest_categorical('penalty', ['l1', 'l2', 'elasticnet', 'none'])
+        multi_class = trial.suggest_categorical('multi_class', ['ovr', 'multinomial'])
+        
+        if penalty == 'l1':
+            solver = trial.suggest_categorical('solver_l1', ['liblinear', 'saga'])
+            if solver == 'liblinear' and multi_class == 'multinomial':
+                return 0.0
+            C = trial.suggest_float('C_l1', 1e-5, 100, log=True)
+            params = {'penalty': 'l1', 'solver': solver, 'C': C}
+        elif penalty == 'l2':
+            solver = trial.suggest_categorical('solver_l2', ['lbfgs', 'newton-cg', 'newton-cholesky', 'sag', 'saga'])
+            C = trial.suggest_float('C_l2', 1e-5, 100, log=True)
+            params = {'penalty': 'l2', 'solver': solver, 'C': C}
+        elif penalty == 'elasticnet':
+            params = {
+                'penalty': 'elasticnet',
+                'solver': 'saga',
+                'C': trial.suggest_float('C_en', 1e-5, 100, log=True),
+                'l1_ratio': trial.suggest_float('l1_ratio', 0, 1)
+            }
+        else: # none
+            solver = trial.suggest_categorical('solver_none', ['lbfgs', 'newton-cg', 'newton-cholesky', 'sag', 'saga'])
+            params = {'penalty': None, 'solver': solver}
+            
+        params.update({
+            'class_weight': 'balanced',
+            'random_state': 42,
+            'max_iter': 2000,
+            'multi_class': multi_class
+        })
+            
+        lr = LogisticRegression(**params)
+        from sklearn.model_selection import cross_val_score
+        scores = cross_val_score(lr, X_train, y_train, cv=3, scoring='accuracy', n_jobs=-1)
+        return scores.mean()
+    
+    study = optuna.create_study(direction='maximize', sampler=optuna.samplers.TPESampler(seed=42))
+    study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
+    
+    print(f"\nBest parameters: {study.best_params}")
+    print(f"Best CV score: {study.best_value:.4f}")
+    
+    bp = study.best_params
+    penalty = bp['penalty']
+    best_params = {'penalty': penalty if penalty != 'none' else None}
+    
+    if penalty == 'l1':
+        best_params.update({'solver': bp['solver_l1'], 'C': bp['C_l1']})
+    elif penalty == 'l2':
+        best_params.update({'solver': bp['solver_l2'], 'C': bp['C_l2']})
+    elif penalty == 'elasticnet':
+        best_params.update({'solver': 'saga', 'C': bp['C_en'], 'l1_ratio': bp['l1_ratio']})
+    else:
+        best_params.update({'solver': bp['solver_none']})
+        
+    best_params.update({
+        'class_weight': 'balanced',
+        'random_state': 42,
+        'max_iter': 2000,
+        'multi_class': bp['multi_class']
+    })
+    
+    best_model = LogisticRegression(**best_params)
+    best_model.fit(X_train, y_train)
+    return best_model
+
+# ==================== SVM Tuning ====================
+
+def tune_svm_random(X_train, y_train, n_iter=30):
+    """Tune SVM using RandomizedSearchCV with massive grid"""
+    print("\n" + "="*60)
+    print("Hyperparameter Tuning: SVM (RandomizedSearchCV - Massive)")
+    print("="*60)
+    
+    param_distributions = {
+        'C': np.logspace(-5, 2, 40).tolist(),
+        'kernel': ['linear', 'poly', 'rbf', 'sigmoid'],
+        'gamma': ['scale', 'auto'] + np.logspace(-5, 1, 20).tolist(),
+        'degree': np.arange(1, 6, 1).tolist(),
+        'coef0': np.linspace(0, 10, 20).tolist(),
+        'shrinking': [True, False],
+        'probability': [True]
+    }
+    
+    svm_base = SVC(class_weight='balanced', random_state=42)
+    
+    random_search = RandomizedSearchCV(
+        svm_base,
+        param_distributions=param_distributions,
+        n_iter=n_iter,
+        cv=3,
+        scoring='accuracy',
+        n_jobs=-1,
+        verbose=1,
+        random_state=42
+    )
+    
+    random_search.fit(X_train, y_train)
+    print(f"\nBest parameters: {random_search.best_params_}")
+    print(f"Best CV score: {random_search.best_score_:.4f}")
+    
+    return random_search.best_estimator_
+
+def tune_svm_grid(X_train, y_train):
+    """Tune SVM using GridSearchCV with moderate grid"""
+    print("\n" + "="*60)
+    print("Hyperparameter Tuning: SVM (GridSearchCV - Moderate)")
+    print("="*60)
+    
+    param_grid = {
+        'C': [0.01, 0.1, 1.0, 10.0, 100.0],
+        'kernel': ['linear', 'poly', 'rbf', 'sigmoid'],
+        'gamma': ['scale', 'auto', 0.001, 0.01, 0.1],
+        'probability': [True]
+    }
+    
+    svm_base = SVC(class_weight='balanced', random_state=42)
+    
+    grid_search = GridSearchCV(
+        svm_base,
+        param_grid=param_grid,
+        cv=3,
+        scoring='accuracy',
+        n_jobs=-1,
+        verbose=1
+    )
+    
+    grid_search.fit(X_train, y_train)
+    print(f"\nBest parameters: {grid_search.best_params_}")
+    print(f"Best CV score: {grid_search.best_score_:.4f}")
+    
+    return grid_search.best_estimator_
+
+def tune_svm_bayesian(X_train, y_train, n_trials=30):
+    """Tune SVM using Bayesian Optimization (Optuna)"""
+    if not OPTUNA_AVAILABLE:
+        print("Optuna not installed. Falling back to RandomizedSearchCV...")
+        return tune_svm_random(X_train, y_train)
+        
+    print("\n" + "="*60)
+    print("Hyperparameter Tuning: SVM (Bayesian - Optuna)")
+    print("="*60)
+    
+    def objective(trial):
+        params = {
+            'C': trial.suggest_float('C', 1e-5, 100, log=True),
+            'kernel': trial.suggest_categorical('kernel', ['linear', 'poly', 'rbf', 'sigmoid']),
+            'gamma': trial.suggest_categorical('gamma_type', ['scale', 'auto', 'custom']),
+            'shrinking': trial.suggest_categorical('shrinking', [True, False]),
+            'probability': True,
+            'class_weight': 'balanced',
+            'random_state': 42
+        }
+        
+        if params['gamma'] == 'custom':
+            params['gamma'] = trial.suggest_float('gamma_value', 1e-5, 10, log=True)
+            
+        if params['kernel'] == 'poly':
+            params['degree'] = trial.suggest_int('degree', 1, 5)
+            params['coef0'] = trial.suggest_float('coef0_poly', 0, 10)
+        elif params['kernel'] == 'sigmoid':
+            params['coef0'] = trial.suggest_float('coef0_sig', 0, 10)
+            
+        params.pop('gamma_type', None)
+            
+        svm = SVC(**params)
+        from sklearn.model_selection import cross_val_score
+        scores = cross_val_score(svm, X_train, y_train, cv=3, scoring='accuracy', n_jobs=-1)
+        return scores.mean()
+    
+    study = optuna.create_study(direction='maximize', sampler=optuna.samplers.TPESampler(seed=42))
+    study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
+    
+    print(f"\nBest parameters: {study.best_params}")
+    print(f"Best CV score: {study.best_value:.4f}")
+    
+    bp = study.best_params
+    best_params = {
+        'C': bp['C'],
+        'kernel': bp['kernel'],
+        'shrinking': bp['shrinking'],
+        'probability': True,
+        'class_weight': 'balanced',
+        'random_state': 42
+    }
+    
+    if bp['gamma_type'] == 'custom':
+        best_params['gamma'] = bp['gamma_value']
+    else:
+        best_params['gamma'] = bp['gamma_type']
+        
+    if bp['kernel'] == 'poly':
+        best_params['degree'] = bp['degree']
+        best_params['coef0'] = bp['coef0_poly']
+    elif bp['kernel'] == 'sigmoid':
+        best_params['coef0'] = bp['coef0_sig']
+        
+    best_model = SVC(**best_params)
+    best_model.fit(X_train, y_train)
+    return best_model
 
 def evaluate_model(model, X, y, dataset_name="Dataset", is_xgb=False, is_catboost=False, is_lightgbm=False, output_file=None):
     """Evaluate model performance with accuracy, classification report, AUROC, and AUPRC"""
@@ -973,7 +1536,7 @@ def main():
     print(y_train.value_counts().sort_index())
     
     # Ask user for model choice
-    print("\nChoose model to train:")
+    print("\nChoose model(s) to train:")
     print("1. Random Forest")
     print("2. Logistic Regression")
     print("3. XGBoost")
@@ -981,86 +1544,65 @@ def main():
     print("5. CatBoost")
     print("6. LightGBM")
     print("7. AdaBoost")
-    print("8. All models")
-    choice = input("Enter choice (1-8): ").strip()
+    print("8. SVM (Support Vector Machine)")
+    print("9. All models (EXCEPT SVM)")
+    print("10. All models (INCLUDING SVM)")
+    choice = input("Enter choice (1-10): ").strip()
     
-    do_train_rf = choice in ['1', '8']
-    do_train_lr = choice in ['2', '8']
-    do_train_xgb = choice in ['3', '8']
-    do_train_mlp = choice in ['4', '8']
-    do_train_catboost = choice in ['5', '8']
-    do_train_lightgbm = choice in ['6', '8']
-    do_train_adaboost = choice in ['7', '8']
+    do_train_rf = choice in ['1', '9', '10']
+    do_train_lr = choice in ['2', '9', '10']
+    do_train_xgb = choice in ['3', '9', '10']
+    do_train_mlp = choice in ['4', '9', '10']
+    do_train_catboost = choice in ['5', '9', '10']
+    do_train_lightgbm = choice in ['6', '9', '10']
+    do_train_adaboost = choice in ['7', '9', '10']
+    do_train_svm = choice in ['8', '10']
     
-    if not (do_train_rf or do_train_lr or do_train_xgb or do_train_mlp or do_train_catboost or do_train_lightgbm or do_train_adaboost):
-        print("Invalid choice. Defaulting to Random Forest.")
-        do_train_rf = True
-    
-    # Ask user for hyperparameter tuning methods for supported models
-    rf_tuning_method = None
-    xgb_tuning_method = None
-    mlp_tuning_method = None
-    lgb_tuning_method = None
-    
-    if do_train_rf:
-        print("\nHyperparameter Tuning for Random Forest:")
-        print("1. No tuning (use default parameters)")
-        print("2. RandomizedSearchCV (fast, explores random combinations)")
-        print("3. GridSearchCV (slower, exhaustive search)")
-        print("4. Bayesian Optimization (Optuna - smart search)")
-        tuning_choice = input("Enter choice (1-4): ").strip()
+    if choice == '9':
+        do_train_rf = do_train_lr = do_train_xgb = do_train_mlp = do_train_catboost = do_train_lightgbm = do_train_adaboost = True
+        do_train_svm = False
+    elif choice == '10':
+        do_train_rf = do_train_lr = do_train_xgb = do_train_mlp = do_train_catboost = do_train_lightgbm = do_train_adaboost = do_train_svm = True
+
+    # Global tuning choice for "All" options
+    global_tuning = None
+    if choice in ['9', '10']:
+        print("\nYou have selected all models. Would you like to set a GLOBAL tuning method for all of them?")
+        print("1. Set a global tuning method for all selected models")
+        print("2. Choose tuning method for each model individually")
+        global_choice = input("Enter choice (1 or 2): ").strip()
         
-        if tuning_choice == '2':
-            rf_tuning_method = 'random'
-        elif tuning_choice == '3':
-            rf_tuning_method = 'grid'
-        elif tuning_choice == '4':
-            rf_tuning_method = 'bayesian'
-    
-    if do_train_xgb:
-        print("\nHyperparameter Tuning for XGBoost:")
+        if global_choice == '1':
+            print("\nSelect GLOBAL Hyperparameter Tuning Method:")
+            print("1. No tuning (use default parameters)")
+            print("2. RandomizedSearchCV (Massive range)")
+            print("3. GridSearchCV (Restricted range for speed)")
+            print("4. Bayesian Optimization (Optuna - Wide range)")
+            gtc = input("Enter choice (1-4): ").strip()
+            global_tuning = {'2': 'random', '3': 'grid', '4': 'bayesian'}.get(gtc, 'none')
+            if gtc == '1': global_tuning = 'none'
+
+    # Helper for generic tuning prompt
+    def get_tuning_choice(model_name):
+        if global_tuning:
+            return None if global_tuning == 'none' else global_tuning
+            
+        print(f"\nHyperparameter Tuning for {model_name}:")
         print("1. No tuning (use default parameters)")
-        print("2. RandomizedSearchCV (fast, explores random combinations)")
-        print("3. GridSearchCV (slower, exhaustive search)")
-        print("4. Bayesian Optimization (Optuna - smart search)")
-        tuning_choice = input("Enter choice (1-4): ").strip()
-        
-        if tuning_choice == '2':
-            xgb_tuning_method = 'random'
-        elif tuning_choice == '3':
-            xgb_tuning_method = 'grid'
-        elif tuning_choice == '4':
-            xgb_tuning_method = 'bayesian'
-    
-    if do_train_mlp:
-        print("\nHyperparameter Tuning for MLP:")
-        print("1. No tuning (use default parameters)")
-        print("2. RandomizedSearchCV (fast, explores random combinations)")
-        print("3. GridSearchCV (slower, exhaustive search)")
-        print("4. Bayesian Optimization (Optuna - smart search)")
-        tuning_choice = input("Enter choice (1-4): ").strip()
-        
-        if tuning_choice == '2':
-            mlp_tuning_method = 'random'
-        elif tuning_choice == '3':
-            mlp_tuning_method = 'grid'
-        elif tuning_choice == '4':
-            mlp_tuning_method = 'bayesian'
-    
-    if do_train_lightgbm:
-        print("\nHyperparameter Tuning for LightGBM:")
-        print("1. No tuning (use default parameters)")
-        print("2. RandomizedSearchCV (fast, explores random combinations)")
-        print("3. GridSearchCV (slower, exhaustive search)")
-        print("4. Bayesian Optimization (Optuna - smart search)")
-        tuning_choice = input("Enter choice (1-4): ").strip()
-        
-        if tuning_choice == '2':
-            lgb_tuning_method = 'random'
-        elif tuning_choice == '3':
-            lgb_tuning_method = 'grid'
-        elif tuning_choice == '4':
-            lgb_tuning_method = 'bayesian'
+        print("2. RandomizedSearchCV (Massive range)")
+        print("3. GridSearchCV (Restricted range for speed)")
+        print("4. Bayesian Optimization (Optuna - Wide range)")
+        tc = input("Enter choice (1-4): ").strip()
+        return {'2': 'random', '3': 'grid', '4': 'bayesian'}.get(tc, None)
+
+    rf_tuning_method = get_tuning_choice("Random Forest") if do_train_rf else None
+    lr_tuning_method = get_tuning_choice("Logistic Regression") if do_train_lr else None
+    xgb_tuning_method = get_tuning_choice("XGBoost") if do_train_xgb else None
+    mlp_tuning_method = get_tuning_choice("MLP") if do_train_mlp else None
+    cat_tuning_method = get_tuning_choice("CatBoost") if do_train_catboost else None
+    lgb_tuning_method = get_tuning_choice("LightGBM") if do_train_lightgbm else None
+    ada_tuning_method = get_tuning_choice("AdaBoost") if do_train_adaboost else None
+    svm_tuning_method = get_tuning_choice("SVM") if do_train_svm else None
     
     rf_model = None
     lr_model = None
@@ -1069,51 +1611,56 @@ def main():
     catboost_model = None
     lightgbm_model = None
     adaboost_model = None
+    svm_model = None
     
     # Train Random Forest
     if do_train_rf:
         if rf_tuning_method == 'random':
-            rf_model = tune_random_forest_random(X_train, y_train, n_iter=20)
+            rf_model = tune_random_forest_random(X_train, y_train, n_iter=100)
         elif rf_tuning_method == 'grid':
             rf_model = tune_random_forest_grid(X_train, y_train)
         elif rf_tuning_method == 'bayesian':
-            rf_model = tune_random_forest_bayesian(X_train, y_train, n_trials=30)
+            rf_model = tune_random_forest_bayesian(X_train, y_train, n_trials=50)
         else:
             rf_model = train_random_forest(X_train, y_train)
         
         evaluate_model(rf_model, X_valid, y_valid, "Validation Set (Random Forest)", output_file=results_file)
         show_feature_importance(rf_model, X_train.columns)
-        # save_model(rf_model, "ml_random_forest_model.pkl")
     
     # Train Logistic Regression
     if do_train_lr:
-        lr_model = train_logistic_regression(X_train, y_train)
+        if lr_tuning_method == 'random':
+            lr_model = tune_logistic_regression_random(X_train, y_train)
+        elif lr_tuning_method == 'grid':
+            lr_model = tune_logistic_regression_grid(X_train, y_train)
+        elif lr_tuning_method == 'bayesian':
+            lr_model = tune_logistic_regression_bayesian(X_train, y_train)
+        else:
+            lr_model = train_logistic_regression(X_train, y_train)
         evaluate_model(lr_model, X_valid, y_valid, "Validation Set (Logistic Regression)", output_file=results_file)
-        # save_model(lr_model, "ml_logistic_regression_model.pkl")
 
     # Train XGBoost
     if do_train_xgb:
         if xgb_tuning_method == 'random':
-            xgb_model = tune_xgboost_random(X_train, y_train, n_iter=20)
+            xgb_model = tune_xgboost_random(X_train, y_train, n_iter=100)
         elif xgb_tuning_method == 'grid':
             xgb_model = tune_xgboost_grid(X_train, y_train)
         elif xgb_tuning_method == 'bayesian':
-            xgb_model = tune_xgboost_bayesian(X_train, y_train, n_trials=30)
+            xgb_model = tune_xgboost_bayesian(X_train, y_train, n_trials=100)
         else:
             xgb_model = train_xgboost(X_train, y_train)
         
         evaluate_model(xgb_model, X_valid, y_valid, "Validation Set (XGBoost)", is_xgb=True, output_file=results_file)
         show_feature_importance(xgb_model, X_train.columns)
-        # save_model(xgb_model, "ml_xgboost_model.pkl")
     
     # Train MLP
     if do_train_mlp:
         if mlp_tuning_method == 'random':
-            mlp_model = tune_mlp_random(X_train, y_train, n_iter=20)
+            mlp_model = tune_mlp_random(X_train, y_train, n_iter=100)
         elif mlp_tuning_method == 'grid':
             mlp_model = tune_mlp_grid(X_train, y_train)
         elif mlp_tuning_method == 'bayesian':
-            mlp_model = tune_mlp_bayesian(X_train, y_train, n_trials=30)
+            mlp_model = tune_mlp_bayesian(X_train, y_train, n_trials=50)
         else:
             mlp_model = train_mlp(X_train, y_train)
         
@@ -1121,64 +1668,93 @@ def main():
         
     # Train CatBoost
     if do_train_catboost:
-        catboost_model = train_catboost(X_train, y_train)
+        if cat_tuning_method == 'random':
+            catboost_model = tune_catboost_random(X_train, y_train)
+        elif cat_tuning_method == 'grid':
+            catboost_model = tune_catboost_grid(X_train, y_train)
+        elif cat_tuning_method == 'bayesian':
+            catboost_model = tune_catboost_bayesian(X_train, y_train)
+        else:
+            catboost_model = train_catboost(X_train, y_train)
         evaluate_model(catboost_model, X_valid, y_valid, "Validation Set (CatBoost)", is_catboost=True, output_file=results_file)
         show_feature_importance(catboost_model, X_train.columns)
-        # save_model(catboost_model, "ml_catboost_model.pkl")
     
     # Train LightGBM
     if do_train_lightgbm:
         if lgb_tuning_method == 'random':
-            lightgbm_model = tune_lightgbm_random(X_train, y_train, n_iter=20)
+            lightgbm_model = tune_lightgbm_random(X_train, y_train, n_iter=100)
         elif lgb_tuning_method == 'grid':
             lightgbm_model = tune_lightgbm_grid(X_train, y_train)
         elif lgb_tuning_method == 'bayesian':
-            lightgbm_model = tune_lightgbm_bayesian(X_train, y_train, n_trials=30)
+            lightgbm_model = tune_lightgbm_bayesian(X_train, y_train, n_trials=100)
         else:
             lightgbm_model = train_lightgbm(X_train, y_train)
         
         evaluate_model(lightgbm_model, X_valid, y_valid, "Validation Set (LightGBM)", is_lightgbm=True, output_file=results_file)
         show_feature_importance(lightgbm_model, X_train.columns)
-        # save_model(lightgbm_model, "ml_lightgbm_model.pkl")
     
     # Train AdaBoost
     if do_train_adaboost:
-        adaboost_model = train_adaboost(X_train, y_train)
+        if ada_tuning_method == 'random':
+            adaboost_model = tune_adaboost_random(X_train, y_train)
+        elif ada_tuning_method == 'grid':
+            adaboost_model = tune_adaboost_grid(X_train, y_train)
+        elif ada_tuning_method == 'bayesian':
+            adaboost_model = tune_adaboost_bayesian(X_train, y_train)
+        else:
+            adaboost_model = train_adaboost(X_train, y_train)
         evaluate_model(adaboost_model, X_valid, y_valid, "Validation Set (AdaBoost)", output_file=results_file)
-        # save_model(adaboost_model, "ml_adaboost_model.pkl")
+
+    # Train SVM
+    if do_train_svm:
+        if svm_tuning_method == 'random':
+            svm_model = tune_svm_random(X_train, y_train)
+        elif svm_tuning_method == 'grid':
+            svm_model = tune_svm_grid(X_train, y_train)
+        elif svm_tuning_method == 'bayesian':
+            svm_model = tune_svm_bayesian(X_train, y_train)
+        else:
+            svm_model = SVC(class_weight='balanced', probability=True, random_state=42)
+            print("\nTraining SVM with default parameters...")
+            svm_model.fit(X_train, y_train)
+        evaluate_model(svm_model, X_valid, y_valid, "Validation Set (SVM)", output_file=results_file)
     
     # Final evaluation on test set
     print("\n" + "#"*60)
     print("FINAL EVALUATION ON TEST SET")
     print("#"*60)
     
-    if do_train_rf:
+    if rf_model:
         print("\nRandom Forest on Test Set:")
         evaluate_model(rf_model, X_test, y_test, "Test Set (Random Forest)", output_file=results_file)
     
-    if do_train_lr:
+    if lr_model:
         print("\nLogistic Regression on Test Set:")
         evaluate_model(lr_model, X_test, y_test, "Test Set (Logistic Regression)", output_file=results_file)
     
-    if do_train_xgb:
+    if xgb_model:
         print("\nXGBoost on Test Set:")
         evaluate_model(xgb_model, X_test, y_test, "Test Set (XGBoost)", is_xgb=True, output_file=results_file)
     
-    if do_train_mlp:
+    if mlp_model:
         print("\nMLP on Test Set:")
         evaluate_model(mlp_model, X_test, y_test, "Test Set (MLP)", output_file=results_file)
     
-    if do_train_catboost:
+    if catboost_model:
         print("\nCatBoost on Test Set:")
         evaluate_model(catboost_model, X_test, y_test, "Test Set (CatBoost)", is_catboost=True, output_file=results_file)
     
-    if do_train_lightgbm:
+    if lightgbm_model:
         print("\nLightGBM on Test Set:")
         evaluate_model(lightgbm_model, X_test, y_test, "Test Set (LightGBM)", is_lightgbm=True, output_file=results_file)
     
-    if do_train_adaboost:
+    if adaboost_model:
         print("\nAdaBoost on Test Set:")
         evaluate_model(adaboost_model, X_test, y_test, "Test Set (AdaBoost)", output_file=results_file)
+
+    if svm_model:
+        print("\nSVM on Test Set:")
+        evaluate_model(svm_model, X_test, y_test, "Test Set (SVM)", output_file=results_file)
     
     print(f"\n{'='*60}")
     print(f"Results saved to: {results_file}")

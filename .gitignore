@@ -41,6 +41,7 @@ ml_model/ensemble_model/
 # Processed Data (keep raw data, ignore processed)
 ml_model/ml_processed_data/
 rule_based/rule_processed_data/
+new_dataset/processed_data/
 
 # XAI outputs (generated visualizations)
 hybrid_triage/xai_outputs/
@@ -80,3 +81,9 @@ env/
 ENV/
 env.bak/
 venv.bak/
+
+
+*.log
+*.json
+catboost_info/
+autogluon_models/
