@@ -22,13 +22,13 @@ except ImportError:
 
 def load_data():
     """Load the preprocessed train, validation, and test datasets with chief complaint features"""
-    train_df = pd.read_csv("ml_processed_data/ml_processed_train.csv")
-    valid_df = pd.read_csv("ml_processed_data/ml_processed_valid.csv")
-    test_df = pd.read_csv("ml_processed_data/ml_processed_test.csv")
+    # train_df = pd.read_csv("ml_processed_data/ml_processed_train.csv")
+    # valid_df = pd.read_csv("ml_processed_data/ml_processed_valid.csv")
+    # test_df = pd.read_csv("ml_processed_data/ml_processed_test.csv")
 
-    # train_df = pd.read_csv("ml_processed_data/balanced/ml_processed_train.csv")
-    # valid_df = pd.read_csv("ml_processed_data/balanced/ml_processed_valid.csv")
-    # test_df = pd.read_csv("ml_processed_data/balanced/ml_processed_test.csv")
+    train_df = pd.read_csv("ml_processed_data/balanced/ml_processed_train.csv")
+    valid_df = pd.read_csv("ml_processed_data/balanced/ml_processed_valid.csv")
+    test_df = pd.read_csv("ml_processed_data/balanced/ml_processed_test.csv")
     
     print(f"Train shape: {train_df.shape}")
     print(f"Validation shape: {valid_df.shape}")
@@ -58,186 +58,101 @@ def prepare_features_target(df, target_col='acuity', merge_classes=False):
     
     return X, y
 
-def train_random_forest(X_train, y_train, max_features='log2', n_estimators=1000):
-    """Train Random Forest Classifier (optimized for text + numeric features)"""
+def train_random_forest(X_train, y_train):
+    """Train Random Forest Classifier with default parameters."""
     print("\n" + "="*60)
-    print("Training Random Forest Classifier (with Chief Complaint)...")
+    print("Training Random Forest Classifier (default parameters)...")
     print("="*60)
-    print(f"Note: Using max_features='{max_features}', n_estimators={n_estimators}")
-    
-    rf_model = RandomForestClassifier(
-        n_estimators=n_estimators,
-        max_depth=None,
-        min_samples_split=2,
-        min_samples_leaf=1,
-        max_features=max_features,  # Tunable parameter
-        class_weight='balanced',
-        random_state=42,
-        n_jobs=-1,
-        verbose=1
-    )
+    rf_model = RandomForestClassifier()
     
     rf_model.fit(X_train, y_train)
     print("Random Forest training completed.")
     return rf_model
 
 def train_logistic_regression(X_train, y_train):
-    """Train Logistic Regression (works well with TF-IDF features)"""
+    """Train Logistic Regression with default parameters."""
     print("\n" + "="*60)
-    print("Training Logistic Regression (with Chief Complaint)...")
+    print("Training Logistic Regression (default parameters)...")
     print("="*60)
-    print("Note: LR is effective for text classification tasks.")
-    
-    lr_model = LogisticRegression(
-        max_iter=2000,  # Increased for convergence with more features
-        multi_class='multinomial',
-        solver='lbfgs',
-        class_weight='balanced',
-        C=1.0,  # Regularization strength
-        random_state=42,
-        verbose=1
-    )
+    lr_model = LogisticRegression()
     
     lr_model.fit(X_train, y_train)
     print("Logistic Regression training completed.")
     return lr_model
 
-def train_xgboost(X_train, y_train, n_estimators=1000):
-    """Train XGBoost Classifier (handles sparse features well)"""
+def train_xgboost(X_train, y_train):
+    """Train XGBoost Classifier with default parameters."""
     print("\n" + "="*60)
-    print("Training XGBoost Classifier (with Chief Complaint)...")
+    print("Training XGBoost Classifier (default parameters)...")
     print("="*60)
-    print(f"Note: Using n_estimators={n_estimators}")
     
     # Convert labels to 0-indexed for XGBoost (1,2,3,4,5 -> 0,1,2,3,4)
     y_train_xgb = y_train - 1
     
-    # Compute class weights for XGBoost
-    classes = np.unique(y_train_xgb)
-    class_weights = compute_class_weight('balanced', classes=classes, y=y_train_xgb)
-    sample_weights = np.array([class_weights[int(y)] for y in y_train_xgb])
-    
-    xgb_model = XGBClassifier(
-        n_estimators=n_estimators,  # Increased for complex patterns
-        max_depth=12,  # Moderate depth for text features
-        learning_rate=0.05,  # Lower for better generalization
-        subsample=0.8,
-        colsample_bytree=0.6,  # Reduced to handle many features
-        min_child_weight=3,
-        gamma=0.1,
-        random_state=42,
-        n_jobs=-1,
-        verbosity=1,
-        eval_metric='mlogloss'
-    )
-    
-    xgb_model.fit(X_train, y_train_xgb, sample_weight=sample_weights)
+    xgb_model = XGBClassifier()
+    xgb_model.fit(X_train, y_train_xgb)
     print("XGBoost training completed.")
     return xgb_model
 
 def train_mlp(X_train, y_train):
-    """Train Multi-Layer Perceptron (good for text + numeric features)"""
+    """Train Multi-Layer Perceptron with default parameters."""
     print("\n" + "="*60)
-    print("Training MLP Classifier (with Chief Complaint)...")
+    print("Training MLP Classifier (default parameters)...")
     print("="*60)
-    print("Note: Neural networks can learn complex text patterns.")
-    print("Using early stopping to prevent overfitting.")
-    
-    mlp_model = MLPClassifier(
-        hidden_layer_sizes=(512, 256, 128),  # Larger layers for more features
-        activation='relu',
-        solver='adam',
-        alpha=0.001,  # L2 regularization
-        batch_size=32,
-        learning_rate='adaptive',
-        learning_rate_init=0.0001,
-        max_iter=500,
-        random_state=42,
-        verbose=True,
-        early_stopping=True,
-        validation_fraction=0.1,
-        n_iter_no_change=15,
-        tol=1e-4
-    )
+    mlp_model = MLPClassifier()
     
     mlp_model.fit(X_train, y_train)
     print("MLP training completed.")
     return mlp_model
 
 def train_lightgbm(X_train, y_train):
-    """Train LightGBM Classifier (fast and efficient for large datasets)"""
+    """Train LightGBM Classifier with default parameters."""
     print("\n" + "="*60)
-    print("Training LightGBM Classifier (with Chief Complaint)...")
+    print("Training LightGBM Classifier (default parameters)...")
     print("="*60)
-    print("Note: LightGBM is very fast and memory efficient.")
     
     # Convert labels to 0-indexed for LightGBM
     y_train_lgb = y_train - 1
     
-    # Compute class weights
-    classes = np.unique(y_train_lgb)
-    class_weights = compute_class_weight('balanced', classes=classes, y=y_train_lgb)
-    sample_weights = np.array([class_weights[int(y)] for y in y_train_lgb])
-    
-    lgb_model = LGBMClassifier(
-        n_estimators=500,
-        max_depth=15,
-        learning_rate=0.05,
-        num_leaves=20,
-        min_child_samples=10,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        random_state=42,
-        n_jobs=-1,
-        verbose=-1
-    )
-    
-    lgb_model.fit(X_train, y_train_lgb, sample_weight=sample_weights)
+    lgb_model = LGBMClassifier()
+    lgb_model.fit(X_train, y_train_lgb)
     print("LightGBM training completed.")
     return lgb_model
 
 def train_catboost(X_train, y_train):
-    """Train CatBoost Classifier (handles categorical and text features natively)"""
+    """Train CatBoost Classifier with default parameters."""
     print("\n" + "="*60)
-    print("Training CatBoost Classifier (with Chief Complaint)...")
+    print("Training CatBoost Classifier (default parameters)...")
     print("="*60)
     
     y_train_cat = y_train - 1
-    classes = np.unique(y_train_cat)
-    class_weights = compute_class_weight('balanced', classes=classes, y=y_train_cat)
-    class_weight_dict = {i: class_weights[i] for i in range(len(class_weights))}
-    
-    cat_model = CatBoostClassifier(
-        iterations=500,
-        depth=8,
-        learning_rate=0.05,
-        l2_leaf_reg=3,
-        class_weights=class_weight_dict,
-        random_seed=42,
-        verbose=100,
-        loss_function='MultiClass'
-    )
+    cat_model = CatBoostClassifier()
     
     cat_model.fit(X_train, y_train_cat)
     print("CatBoost training completed.")
     return cat_model
 
 def train_adaboost(X_train, y_train):
-    """Train AdaBoost Classifier"""
+    """Train AdaBoost Classifier with default parameters."""
     print("\n" + "="*60)
     print("Training AdaBoost Classifier...")
     print("="*60)
-    print("Note: AdaBoost focuses on misclassified samples.")
-    
-    ada_model = AdaBoostClassifier(
-        n_estimators=100,
-        learning_rate=0.5,
-        random_state=42
-    )
+    ada_model = AdaBoostClassifier()
     
     ada_model.fit(X_train, y_train)
     print("AdaBoost training completed.")
     return ada_model
+
+def train_svm(X_train, y_train):
+    """Train SVM Classifier with default parameters."""
+    print("\n" + "="*60)
+    print("Training SVM Classifier (default parameters)...")
+    print("="*60)
+
+    svm_model = SVC()
+    svm_model.fit(X_train, y_train)
+    print("SVM training completed.")
+    return svm_model
 
 def tune_random_forest_random(X_train, y_train, n_iter=100):
     """Tune Random Forest using RandomizedSearchCV with massive grid"""
@@ -1584,35 +1499,51 @@ def main():
         do_train_rf = do_train_lr = do_train_xgb = do_train_mlp = do_train_catboost = do_train_lightgbm = do_train_adaboost = do_train_svm = True
 
     # Global tuning choice for "All" options
-    global_tuning = None
+    # Per-model individual tuning selection is always used.
     if choice in ['9', '10']:
-        print("\nYou have selected all models. Would you like to set a GLOBAL tuning method for all of them?")
-        print("1. Set a global tuning method for all selected models")
-        print("2. Choose tuning method for each model individually")
-        global_choice = input("Enter choice (1 or 2): ").strip()
-        
-        if global_choice == '1':
-            print("\nSelect GLOBAL Hyperparameter Tuning Method:")
-            print("1. No tuning (use default parameters)")
-            print("2. RandomizedSearchCV (Massive range)")
-            print("3. GridSearchCV (Restricted range for speed)")
-            print("4. Bayesian Optimization (Optuna - Wide range)")
-            gtc = input("Enter choice (1-4): ").strip()
-            global_tuning = {'2': 'random', '3': 'grid', '4': 'bayesian'}.get(gtc, 'none')
-            if gtc == '1': global_tuning = 'none'
+        print("\nYou have selected all models.")
+        print("Hyperparameter tuning will be chosen for each model individually.")
+
+    def select_best_tuned_model(model_name, tuning_options, X_train, y_train, X_valid, y_valid,
+                                is_xgb=False, is_catboost=False, is_lightgbm=False):
+        """Run all selected tuning techniques and keep the best model by validation accuracy."""
+        print("\n" + "="*60)
+        print(f"Running all tuning techniques for {model_name}")
+        print("="*60)
+
+        best_method = None
+        best_model = None
+        best_accuracy = -1.0
+
+        for method_name, tuner_fn in tuning_options:
+            print(f"\nTrying {method_name} tuning for {model_name}...")
+            tuned_model = tuner_fn(X_train, y_train)
+            y_pred = tuned_model.predict(X_valid)
+
+            if is_xgb or is_catboost or is_lightgbm:
+                y_pred = y_pred + 1
+
+            accuracy = accuracy_score(y_valid, y_pred)
+            print(f"Validation accuracy with {method_name}: {accuracy:.4f}")
+
+            if accuracy > best_accuracy:
+                best_accuracy = accuracy
+                best_model = tuned_model
+                best_method = method_name
+
+        print(f"\nSelected best tuning for {model_name}: {best_method} (accuracy={best_accuracy:.4f})")
+        return best_model
 
     # Helper for generic tuning prompt
     def get_tuning_choice(model_name):
-        if global_tuning:
-            return None if global_tuning == 'none' else global_tuning
-            
         print(f"\nHyperparameter Tuning for {model_name}:")
         print("1. No tuning (use default parameters)")
         print("2. RandomizedSearchCV (Massive range)")
         print("3. GridSearchCV (Restricted range for speed)")
         print("4. Bayesian Optimization (Optuna - Wide range)")
-        tc = input("Enter choice (1-4): ").strip()
-        return {'2': 'random', '3': 'grid', '4': 'bayesian'}.get(tc, None)
+        print("5. All tuning techniques (pick best on validation set)")
+        tc = input("Enter choice (1-5): ").strip()
+        return {'2': 'random', '3': 'grid', '4': 'bayesian', '5': 'all'}.get(tc, None)
 
     rf_tuning_method = get_tuning_choice("Random Forest") if do_train_rf else None
     lr_tuning_method = get_tuning_choice("Logistic Regression") if do_train_lr else None
@@ -1640,6 +1571,19 @@ def main():
             rf_model = tune_random_forest_grid(X_train, y_train)
         elif rf_tuning_method == 'bayesian':
             rf_model = tune_random_forest_bayesian(X_train, y_train, n_trials=50)
+        elif rf_tuning_method == 'all':
+            rf_model = select_best_tuned_model(
+                "Random Forest",
+                [
+                    ("random", lambda Xt, yt: tune_random_forest_random(Xt, yt, n_iter=100)),
+                    ("grid", lambda Xt, yt: tune_random_forest_grid(Xt, yt)),
+                    ("bayesian", lambda Xt, yt: tune_random_forest_bayesian(Xt, yt, n_trials=50))
+                ],
+                X_train,
+                y_train,
+                X_valid,
+                y_valid
+            )
         else:
             rf_model = train_random_forest(X_train, y_train)
         
@@ -1654,6 +1598,19 @@ def main():
             lr_model = tune_logistic_regression_grid(X_train, y_train)
         elif lr_tuning_method == 'bayesian':
             lr_model = tune_logistic_regression_bayesian(X_train, y_train)
+        elif lr_tuning_method == 'all':
+            lr_model = select_best_tuned_model(
+                "Logistic Regression",
+                [
+                    ("random", lambda Xt, yt: tune_logistic_regression_random(Xt, yt)),
+                    ("grid", lambda Xt, yt: tune_logistic_regression_grid(Xt, yt)),
+                    ("bayesian", lambda Xt, yt: tune_logistic_regression_bayesian(Xt, yt))
+                ],
+                X_train,
+                y_train,
+                X_valid,
+                y_valid
+            )
         else:
             lr_model = train_logistic_regression(X_train, y_train)
         evaluate_model(lr_model, X_valid, y_valid, "Validation Set (Logistic Regression)", output_file=results_file)
@@ -1666,6 +1623,20 @@ def main():
             xgb_model = tune_xgboost_grid(X_train, y_train)
         elif xgb_tuning_method == 'bayesian':
             xgb_model = tune_xgboost_bayesian(X_train, y_train, n_trials=100)
+        elif xgb_tuning_method == 'all':
+            xgb_model = select_best_tuned_model(
+                "XGBoost",
+                [
+                    ("random", lambda Xt, yt: tune_xgboost_random(Xt, yt, n_iter=100)),
+                    ("grid", lambda Xt, yt: tune_xgboost_grid(Xt, yt)),
+                    ("bayesian", lambda Xt, yt: tune_xgboost_bayesian(Xt, yt, n_trials=100))
+                ],
+                X_train,
+                y_train,
+                X_valid,
+                y_valid,
+                is_xgb=True
+            )
         else:
             xgb_model = train_xgboost(X_train, y_train)
         
@@ -1680,6 +1651,19 @@ def main():
             mlp_model = tune_mlp_grid(X_train, y_train)
         elif mlp_tuning_method == 'bayesian':
             mlp_model = tune_mlp_bayesian(X_train, y_train, n_trials=50)
+        elif mlp_tuning_method == 'all':
+            mlp_model = select_best_tuned_model(
+                "MLP",
+                [
+                    ("random", lambda Xt, yt: tune_mlp_random(Xt, yt, n_iter=100)),
+                    ("grid", lambda Xt, yt: tune_mlp_grid(Xt, yt)),
+                    ("bayesian", lambda Xt, yt: tune_mlp_bayesian(Xt, yt, n_trials=50))
+                ],
+                X_train,
+                y_train,
+                X_valid,
+                y_valid
+            )
         else:
             mlp_model = train_mlp(X_train, y_train)
         
@@ -1693,6 +1677,20 @@ def main():
             catboost_model = tune_catboost_grid(X_train, y_train)
         elif cat_tuning_method == 'bayesian':
             catboost_model = tune_catboost_bayesian(X_train, y_train)
+        elif cat_tuning_method == 'all':
+            catboost_model = select_best_tuned_model(
+                "CatBoost",
+                [
+                    ("random", lambda Xt, yt: tune_catboost_random(Xt, yt)),
+                    ("grid", lambda Xt, yt: tune_catboost_grid(Xt, yt)),
+                    ("bayesian", lambda Xt, yt: tune_catboost_bayesian(Xt, yt))
+                ],
+                X_train,
+                y_train,
+                X_valid,
+                y_valid,
+                is_catboost=True
+            )
         else:
             catboost_model = train_catboost(X_train, y_train)
         evaluate_model(catboost_model, X_valid, y_valid, "Validation Set (CatBoost)", is_catboost=True, output_file=results_file)
@@ -1706,6 +1704,20 @@ def main():
             lightgbm_model = tune_lightgbm_grid(X_train, y_train)
         elif lgb_tuning_method == 'bayesian':
             lightgbm_model = tune_lightgbm_bayesian(X_train, y_train, n_trials=100)
+        elif lgb_tuning_method == 'all':
+            lightgbm_model = select_best_tuned_model(
+                "LightGBM",
+                [
+                    ("random", lambda Xt, yt: tune_lightgbm_random(Xt, yt, n_iter=100)),
+                    ("grid", lambda Xt, yt: tune_lightgbm_grid(Xt, yt)),
+                    ("bayesian", lambda Xt, yt: tune_lightgbm_bayesian(Xt, yt, n_trials=100))
+                ],
+                X_train,
+                y_train,
+                X_valid,
+                y_valid,
+                is_lightgbm=True
+            )
         else:
             lightgbm_model = train_lightgbm(X_train, y_train)
         
@@ -1720,6 +1732,19 @@ def main():
             adaboost_model = tune_adaboost_grid(X_train, y_train)
         elif ada_tuning_method == 'bayesian':
             adaboost_model = tune_adaboost_bayesian(X_train, y_train)
+        elif ada_tuning_method == 'all':
+            adaboost_model = select_best_tuned_model(
+                "AdaBoost",
+                [
+                    ("random", lambda Xt, yt: tune_adaboost_random(Xt, yt)),
+                    ("grid", lambda Xt, yt: tune_adaboost_grid(Xt, yt)),
+                    ("bayesian", lambda Xt, yt: tune_adaboost_bayesian(Xt, yt))
+                ],
+                X_train,
+                y_train,
+                X_valid,
+                y_valid
+            )
         else:
             adaboost_model = train_adaboost(X_train, y_train)
         evaluate_model(adaboost_model, X_valid, y_valid, "Validation Set (AdaBoost)", output_file=results_file)
@@ -1732,10 +1757,21 @@ def main():
             svm_model = tune_svm_grid(X_train, y_train)
         elif svm_tuning_method == 'bayesian':
             svm_model = tune_svm_bayesian(X_train, y_train)
+        elif svm_tuning_method == 'all':
+            svm_model = select_best_tuned_model(
+                "SVM",
+                [
+                    ("random", lambda Xt, yt: tune_svm_random(Xt, yt)),
+                    ("grid", lambda Xt, yt: tune_svm_grid(Xt, yt)),
+                    ("bayesian", lambda Xt, yt: tune_svm_bayesian(Xt, yt))
+                ],
+                X_train,
+                y_train,
+                X_valid,
+                y_valid
+            )
         else:
-            svm_model = SVC(class_weight='balanced', probability=True, random_state=42)
-            print("\nTraining SVM with default parameters...")
-            svm_model.fit(X_train, y_train)
+            svm_model = train_svm(X_train, y_train)
         evaluate_model(svm_model, X_valid, y_valid, "Validation Set (SVM)", output_file=results_file)
     
     # Final evaluation on test set
