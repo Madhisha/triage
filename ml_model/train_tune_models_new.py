@@ -286,12 +286,20 @@ def main():
     print("Loading data...")
     train_df, valid_df, test_df = load_data()
     
-    # Create results output file
-    results_file = "training_results.txt"
-    with open(results_file, 'w', encoding='utf-8') as f:
-        f.write("="*60 + "\n")
-        f.write("MODEL TRAINING AND EVALUATION RESULTS\n")
-        f.write("="*60 + "\n")
+    # Create per-model results helpers
+    os.makedirs("training_results", exist_ok=True)
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    def get_results_file(model_name):
+        safe = model_name.lower().replace(" ", "_")
+        return os.path.join("training_results", f"{safe}_{timestamp}.txt")
+
+    def init_results_file(path):
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write("="*60 + "\n")
+            f.write("MODEL TRAINING AND EVALUATION RESULTS\n")
+            f.write("="*60 + "\n")
     
     # Prepare data
     X_train, y_train = prepare_features_target(train_df)
@@ -434,6 +442,20 @@ def main():
     lgb_tuning_method = get_tuning_choice("LightGBM") if do_train_lightgbm else None
     ada_tuning_method = get_tuning_choice("AdaBoost") if do_train_adaboost else None
     svm_tuning_method = get_tuning_choice("SVM") if do_train_svm else None
+
+    rf_results_file = get_results_file("Random Forest") if do_train_rf else None
+    lr_results_file = get_results_file("Logistic Regression") if do_train_lr else None
+    xgb_results_file = get_results_file("XGBoost") if do_train_xgb else None
+    mlp_results_file = get_results_file("MLP") if do_train_mlp else None
+    cat_results_file = get_results_file("CatBoost") if do_train_catboost else None
+    lgb_results_file = get_results_file("LightGBM") if do_train_lightgbm else None
+    ada_results_file = get_results_file("AdaBoost") if do_train_adaboost else None
+    svm_results_file = get_results_file("SVM") if do_train_svm else None
+
+    for path in [rf_results_file, lr_results_file, xgb_results_file, mlp_results_file,
+                 cat_results_file, lgb_results_file, ada_results_file, svm_results_file]:
+        if path:
+            init_results_file(path)
     
     rf_model = None
     lr_model = None
@@ -464,15 +486,15 @@ def main():
                 y_train,
                 X_valid,
                 y_valid,
-                output_file=results_file
+                output_file=rf_results_file
             )
         else:
             rf_model = train_random_forest(X_train, y_train)
 
         if rf_tuning_method != 'all':
-            rf_model = finalize_model(rf_model, "Random Forest", rf_tuning_method, results_file)
+            rf_model = finalize_model(rf_model, "Random Forest", rf_tuning_method, rf_results_file)
         
-        evaluate_model(rf_model, X_valid, y_valid, "Validation Set (Random Forest)", output_file=results_file)
+        evaluate_model(rf_model, X_valid, y_valid, "Validation Set (Random Forest)", output_file=rf_results_file)
         show_feature_importance(rf_model, X_train.columns)
     
     # Train Logistic Regression
@@ -495,15 +517,15 @@ def main():
                 y_train,
                 X_valid,
                 y_valid,
-                output_file=results_file
+                output_file=lr_results_file
             )
         else:
             lr_model = train_logistic_regression(X_train, y_train)
 
         if lr_tuning_method != 'all':
-            lr_model = finalize_model(lr_model, "Logistic Regression", lr_tuning_method, results_file)
+            lr_model = finalize_model(lr_model, "Logistic Regression", lr_tuning_method, lr_results_file)
 
-        evaluate_model(lr_model, X_valid, y_valid, "Validation Set (Logistic Regression)", output_file=results_file)
+        evaluate_model(lr_model, X_valid, y_valid, "Validation Set (Logistic Regression)", output_file=lr_results_file)
 
     # Train XGBoost
     if do_train_xgb:
@@ -526,15 +548,15 @@ def main():
                 X_valid,
                 y_valid,
                 is_xgb=True,
-                output_file=results_file
+                output_file=xgb_results_file
             )
         else:
             xgb_model = train_xgboost(X_train, y_train)
 
         if xgb_tuning_method != 'all':
-            xgb_model = finalize_model(xgb_model, "XGBoost", xgb_tuning_method, results_file)
+            xgb_model = finalize_model(xgb_model, "XGBoost", xgb_tuning_method, xgb_results_file)
         
-        evaluate_model(xgb_model, X_valid, y_valid, "Validation Set (XGBoost)", is_xgb=True, output_file=results_file)
+        evaluate_model(xgb_model, X_valid, y_valid, "Validation Set (XGBoost)", is_xgb=True, output_file=xgb_results_file)
         show_feature_importance(xgb_model, X_train.columns)
     
     # Train MLP
@@ -557,15 +579,15 @@ def main():
                 y_train,
                 X_valid,
                 y_valid,
-                output_file=results_file
+                output_file=mlp_results_file
             )
         else:
             mlp_model = train_mlp(X_train, y_train)
 
         if mlp_tuning_method != 'all':
-            mlp_model = finalize_model(mlp_model, "MLP", mlp_tuning_method, results_file)
+            mlp_model = finalize_model(mlp_model, "MLP", mlp_tuning_method, mlp_results_file)
         
-        evaluate_model(mlp_model, X_valid, y_valid, "Validation Set (MLP)", output_file=results_file)
+        evaluate_model(mlp_model, X_valid, y_valid, "Validation Set (MLP)", output_file=mlp_results_file)
         
     # Train CatBoost
     if do_train_catboost:
@@ -588,15 +610,15 @@ def main():
                 X_valid,
                 y_valid,
                 is_catboost=True,
-                output_file=results_file
+                output_file=cat_results_file
             )
         else:
             catboost_model = train_catboost(X_train, y_train)
 
         if cat_tuning_method != 'all':
-            catboost_model = finalize_model(catboost_model, "CatBoost", cat_tuning_method, results_file)
+            catboost_model = finalize_model(catboost_model, "CatBoost", cat_tuning_method, cat_results_file)
 
-        evaluate_model(catboost_model, X_valid, y_valid, "Validation Set (CatBoost)", is_catboost=True, output_file=results_file)
+        evaluate_model(catboost_model, X_valid, y_valid, "Validation Set (CatBoost)", is_catboost=True, output_file=cat_results_file)
         show_feature_importance(catboost_model, X_train.columns)
     
     # Train LightGBM
@@ -620,15 +642,15 @@ def main():
                 X_valid,
                 y_valid,
                 is_lightgbm=True,
-                output_file=results_file
+                output_file=lgb_results_file
             )
         else:
             lightgbm_model = train_lightgbm(X_train, y_train)
 
         if lgb_tuning_method != 'all':
-            lightgbm_model = finalize_model(lightgbm_model, "LightGBM", lgb_tuning_method, results_file)
+            lightgbm_model = finalize_model(lightgbm_model, "LightGBM", lgb_tuning_method, lgb_results_file)
         
-        evaluate_model(lightgbm_model, X_valid, y_valid, "Validation Set (LightGBM)", is_lightgbm=True, output_file=results_file)
+        evaluate_model(lightgbm_model, X_valid, y_valid, "Validation Set (LightGBM)", is_lightgbm=True, output_file=lgb_results_file)
         show_feature_importance(lightgbm_model, X_train.columns)
     
     # Train AdaBoost
@@ -651,15 +673,15 @@ def main():
                 y_train,
                 X_valid,
                 y_valid,
-                output_file=results_file
+                output_file=ada_results_file
             )
         else:
             adaboost_model = train_adaboost(X_train, y_train)
 
         if ada_tuning_method != 'all':
-            adaboost_model = finalize_model(adaboost_model, "AdaBoost", ada_tuning_method, results_file)
+            adaboost_model = finalize_model(adaboost_model, "AdaBoost", ada_tuning_method, ada_results_file)
 
-        evaluate_model(adaboost_model, X_valid, y_valid, "Validation Set (AdaBoost)", output_file=results_file)
+        evaluate_model(adaboost_model, X_valid, y_valid, "Validation Set (AdaBoost)", output_file=ada_results_file)
 
     # Train SVM
     if do_train_svm:
@@ -681,15 +703,15 @@ def main():
                 y_train,
                 X_valid,
                 y_valid,
-                output_file=results_file
+                output_file=svm_results_file
             )
         else:
             svm_model = train_svm(X_train, y_train)
 
         if svm_tuning_method != 'all':
-            svm_model = finalize_model(svm_model, "SVM", svm_tuning_method, results_file)
+            svm_model = finalize_model(svm_model, "SVM", svm_tuning_method, svm_results_file)
 
-        evaluate_model(svm_model, X_valid, y_valid, "Validation Set (SVM)", output_file=results_file)
+        evaluate_model(svm_model, X_valid, y_valid, "Validation Set (SVM)", output_file=svm_results_file)
     
     # Final evaluation on test set
     print("\n" + "#"*60)
@@ -698,38 +720,50 @@ def main():
     
     if rf_model:
         print("\nRandom Forest on Test Set:")
-        evaluate_model(rf_model, X_test, y_test, "Test Set (Random Forest)", output_file=results_file)
+        evaluate_model(rf_model, X_test, y_test, "Test Set (Random Forest)", output_file=rf_results_file)
     
     if lr_model:
         print("\nLogistic Regression on Test Set:")
-        evaluate_model(lr_model, X_test, y_test, "Test Set (Logistic Regression)", output_file=results_file)
+        evaluate_model(lr_model, X_test, y_test, "Test Set (Logistic Regression)", output_file=lr_results_file)
     
     if xgb_model:
         print("\nXGBoost on Test Set:")
-        evaluate_model(xgb_model, X_test, y_test, "Test Set (XGBoost)", is_xgb=True, output_file=results_file)
+        evaluate_model(xgb_model, X_test, y_test, "Test Set (XGBoost)", is_xgb=True, output_file=xgb_results_file)
     
     if mlp_model:
         print("\nMLP on Test Set:")
-        evaluate_model(mlp_model, X_test, y_test, "Test Set (MLP)", output_file=results_file)
+        evaluate_model(mlp_model, X_test, y_test, "Test Set (MLP)", output_file=mlp_results_file)
     
     if catboost_model:
         print("\nCatBoost on Test Set:")
-        evaluate_model(catboost_model, X_test, y_test, "Test Set (CatBoost)", is_catboost=True, output_file=results_file)
+        evaluate_model(catboost_model, X_test, y_test, "Test Set (CatBoost)", is_catboost=True, output_file=cat_results_file)
     
     if lightgbm_model:
         print("\nLightGBM on Test Set:")
-        evaluate_model(lightgbm_model, X_test, y_test, "Test Set (LightGBM)", is_lightgbm=True, output_file=results_file)
+        evaluate_model(lightgbm_model, X_test, y_test, "Test Set (LightGBM)", is_lightgbm=True, output_file=lgb_results_file)
     
     if adaboost_model:
         print("\nAdaBoost on Test Set:")
-        evaluate_model(adaboost_model, X_test, y_test, "Test Set (AdaBoost)", output_file=results_file)
+        evaluate_model(adaboost_model, X_test, y_test, "Test Set (AdaBoost)", output_file=ada_results_file)
 
     if svm_model:
         print("\nSVM on Test Set:")
-        evaluate_model(svm_model, X_test, y_test, "Test Set (SVM)", output_file=results_file)
+        evaluate_model(svm_model, X_test, y_test, "Test Set (SVM)", output_file=svm_results_file)
     
     print(f"\n{'='*60}")
-    print(f"Results saved to: {results_file}")
+    print("Results saved to:")
+    for label, path in [
+        ("Random Forest", rf_results_file),
+        ("Logistic Regression", lr_results_file),
+        ("XGBoost", xgb_results_file),
+        ("MLP", mlp_results_file),
+        ("CatBoost", cat_results_file),
+        ("LightGBM", lgb_results_file),
+        ("AdaBoost", ada_results_file),
+        ("SVM", svm_results_file),
+    ]:
+        if path:
+            print(f"- {label}: {path}")
     print("="*60)
 
 if __name__ == "__main__":
