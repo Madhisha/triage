@@ -20,6 +20,52 @@ try:
 except ImportError:
     OPTUNA_AVAILABLE = False
 
+
+def get_model_params(model):
+    """Return a shallow parameter snapshot for reporting."""
+    if hasattr(model, 'get_params'):
+        return model.get_params(deep=False)
+    return {}
+
+
+def attach_training_summary(model, model_name, strategy, best_validation_accuracy=None, tuning_results=None):
+    """Attach training metadata to a model instance for report generation."""
+    model.training_summary = {
+        'model_name': model_name,
+        'strategy': strategy,
+        'best_validation_accuracy': best_validation_accuracy,
+        'tuning_results': tuning_results or [],
+        'params': get_model_params(model)
+    }
+    return model
+
+
+def write_training_summary(output_file, model):
+    """Write model training and tuning summary to the results file."""
+    if not output_file or not hasattr(model, 'training_summary'):
+        return
+
+    summary = model.training_summary
+    with open(output_file, 'a', encoding='utf-8') as f:
+        f.write("\n" + "=" * 60 + "\n")
+        f.write(f"Training Summary ({summary['model_name']})\n")
+        f.write("=" * 60 + "\n")
+        f.write(f"Selected strategy: {summary['strategy']}\n")
+
+        if summary['best_validation_accuracy'] is not None:
+            f.write(f"Best validation accuracy: {summary['best_validation_accuracy']:.4f}\n")
+
+        if summary['tuning_results']:
+            f.write("\nTuning method validation accuracies:\n")
+            for result in summary['tuning_results']:
+                f.write(f"- {result['method']}: {result['validation_accuracy']:.4f}\n")
+                f.write(f"  Params: {result['params']}\n")
+
+        if summary['params']:
+            f.write("\nFinal model parameters:\n")
+            for key in sorted(summary['params']):
+                f.write(f"- {key}: {summary['params'][key]}\n")
+
 def load_data():
     """Load the preprocessed train, validation, and test datasets with chief complaint features"""
     # train_df = pd.read_csv("ml_processed_data/ml_processed_train.csv")
@@ -1505,7 +1551,7 @@ def main():
         print("Hyperparameter tuning will be chosen for each model individually.")
 
     def select_best_tuned_model(model_name, tuning_options, X_train, y_train, X_valid, y_valid,
-                                is_xgb=False, is_catboost=False, is_lightgbm=False):
+                                is_xgb=False, is_catboost=False, is_lightgbm=False, output_file=None):
         """Run all selected tuning techniques and keep the best model by validation accuracy."""
         print("\n" + "="*60)
         print(f"Running all tuning techniques for {model_name}")
@@ -1514,6 +1560,7 @@ def main():
         best_method = None
         best_model = None
         best_accuracy = -1.0
+        tuning_results = []
 
         for method_name, tuner_fn in tuning_options:
             print(f"\nTrying {method_name} tuning for {model_name}...")
@@ -1525,6 +1572,11 @@ def main():
 
             accuracy = accuracy_score(y_valid, y_pred)
             print(f"Validation accuracy with {method_name}: {accuracy:.4f}")
+            tuning_results.append({
+                'method': method_name,
+                'validation_accuracy': accuracy,
+                'params': get_model_params(tuned_model)
+            })
 
             if accuracy > best_accuracy:
                 best_accuracy = accuracy
@@ -1532,7 +1584,31 @@ def main():
                 best_method = method_name
 
         print(f"\nSelected best tuning for {model_name}: {best_method} (accuracy={best_accuracy:.4f})")
+        attach_training_summary(
+            best_model,
+            model_name=model_name,
+            strategy=f"all tuning techniques -> selected {best_method}",
+            best_validation_accuracy=best_accuracy,
+            tuning_results=tuning_results
+        )
+        write_training_summary(output_file, best_model)
         return best_model
+
+    def finalize_model(model, model_name, tuning_method, output_file):
+        """Attach and persist summary for single-strategy training runs."""
+        strategy_map = {
+            None: 'default parameters',
+            'random': 'RandomizedSearchCV',
+            'grid': 'GridSearchCV',
+            'bayesian': 'Bayesian Optimization (Optuna)'
+        }
+        attach_training_summary(
+            model,
+            model_name=model_name,
+            strategy=strategy_map.get(tuning_method, 'default parameters')
+        )
+        write_training_summary(output_file, model)
+        return model
 
     # Helper for generic tuning prompt
     def get_tuning_choice(model_name):
@@ -1582,10 +1658,14 @@ def main():
                 X_train,
                 y_train,
                 X_valid,
-                y_valid
+                y_valid,
+                output_file=results_file
             )
         else:
             rf_model = train_random_forest(X_train, y_train)
+
+        if rf_tuning_method != 'all':
+            rf_model = finalize_model(rf_model, "Random Forest", rf_tuning_method, results_file)
         
         evaluate_model(rf_model, X_valid, y_valid, "Validation Set (Random Forest)", output_file=results_file)
         show_feature_importance(rf_model, X_train.columns)
@@ -1609,10 +1689,15 @@ def main():
                 X_train,
                 y_train,
                 X_valid,
-                y_valid
+                y_valid,
+                output_file=results_file
             )
         else:
             lr_model = train_logistic_regression(X_train, y_train)
+
+        if lr_tuning_method != 'all':
+            lr_model = finalize_model(lr_model, "Logistic Regression", lr_tuning_method, results_file)
+
         evaluate_model(lr_model, X_valid, y_valid, "Validation Set (Logistic Regression)", output_file=results_file)
 
     # Train XGBoost
@@ -1635,10 +1720,14 @@ def main():
                 y_train,
                 X_valid,
                 y_valid,
-                is_xgb=True
+                is_xgb=True,
+                output_file=results_file
             )
         else:
             xgb_model = train_xgboost(X_train, y_train)
+
+        if xgb_tuning_method != 'all':
+            xgb_model = finalize_model(xgb_model, "XGBoost", xgb_tuning_method, results_file)
         
         evaluate_model(xgb_model, X_valid, y_valid, "Validation Set (XGBoost)", is_xgb=True, output_file=results_file)
         show_feature_importance(xgb_model, X_train.columns)
@@ -1662,10 +1751,14 @@ def main():
                 X_train,
                 y_train,
                 X_valid,
-                y_valid
+                y_valid,
+                output_file=results_file
             )
         else:
             mlp_model = train_mlp(X_train, y_train)
+
+        if mlp_tuning_method != 'all':
+            mlp_model = finalize_model(mlp_model, "MLP", mlp_tuning_method, results_file)
         
         evaluate_model(mlp_model, X_valid, y_valid, "Validation Set (MLP)", output_file=results_file)
         
@@ -1689,10 +1782,15 @@ def main():
                 y_train,
                 X_valid,
                 y_valid,
-                is_catboost=True
+                is_catboost=True,
+                output_file=results_file
             )
         else:
             catboost_model = train_catboost(X_train, y_train)
+
+        if cat_tuning_method != 'all':
+            catboost_model = finalize_model(catboost_model, "CatBoost", cat_tuning_method, results_file)
+
         evaluate_model(catboost_model, X_valid, y_valid, "Validation Set (CatBoost)", is_catboost=True, output_file=results_file)
         show_feature_importance(catboost_model, X_train.columns)
     
@@ -1716,10 +1814,14 @@ def main():
                 y_train,
                 X_valid,
                 y_valid,
-                is_lightgbm=True
+                is_lightgbm=True,
+                output_file=results_file
             )
         else:
             lightgbm_model = train_lightgbm(X_train, y_train)
+
+        if lgb_tuning_method != 'all':
+            lightgbm_model = finalize_model(lightgbm_model, "LightGBM", lgb_tuning_method, results_file)
         
         evaluate_model(lightgbm_model, X_valid, y_valid, "Validation Set (LightGBM)", is_lightgbm=True, output_file=results_file)
         show_feature_importance(lightgbm_model, X_train.columns)
@@ -1743,10 +1845,15 @@ def main():
                 X_train,
                 y_train,
                 X_valid,
-                y_valid
+                y_valid,
+                output_file=results_file
             )
         else:
             adaboost_model = train_adaboost(X_train, y_train)
+
+        if ada_tuning_method != 'all':
+            adaboost_model = finalize_model(adaboost_model, "AdaBoost", ada_tuning_method, results_file)
+
         evaluate_model(adaboost_model, X_valid, y_valid, "Validation Set (AdaBoost)", output_file=results_file)
 
     # Train SVM
@@ -1768,10 +1875,15 @@ def main():
                 X_train,
                 y_train,
                 X_valid,
-                y_valid
+                y_valid,
+                output_file=results_file
             )
         else:
             svm_model = train_svm(X_train, y_train)
+
+        if svm_tuning_method != 'all':
+            svm_model = finalize_model(svm_model, "SVM", svm_tuning_method, results_file)
+
         evaluate_model(svm_model, X_valid, y_valid, "Validation Set (SVM)", output_file=results_file)
     
     # Final evaluation on test set
