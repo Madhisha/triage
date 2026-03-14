@@ -1,5 +1,6 @@
 import numpy as np
 from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
+from scipy.stats import randint, loguniform
 
 try:
     import optuna
@@ -10,22 +11,21 @@ except ImportError:
 from sklearn.ensemble import RandomForestClassifier
 
 def tune_random_forest_random(X_train, y_train, n_iter=100):
-    """Tune Random Forest using RandomizedSearchCV near the int32 combination limit."""
+    """Tune Random Forest using RandomizedSearchCV with distribution sampling."""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: Random Forest (RandomizedSearchCV - ~1.43B combos)")
+    print("Hyperparameter Tuning: Random Forest (RandomizedSearchCV - Distribution Sampling)")
     print("="*60)
-    # Explicit lists sized to stay below 2,147,483,647 total combinations (~1.43B here).
     param_distributions = {
-        'n_estimators': np.arange(100, 3600, 50).tolist(),       # 70
+        'n_estimators': randint(100, 3601),
         'max_depth': [None] + list(range(2, 42, 2)),             # 21
-        'min_samples_split': np.arange(2, 32, 2).tolist(),       # 15
-        'min_samples_leaf': np.arange(1, 30, 2).tolist(),        # 15
+        'min_samples_split': randint(2, 32),
+        'min_samples_leaf': randint(1, 30),
         'max_features': ['sqrt', 'log2', 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, None], # 9
         'bootstrap': [True, False],                              # 2
         'criterion': ['gini', 'entropy', 'log_loss'],            # 3
         'max_samples': [None, 0.4, 0.6, 0.8, 0.9],               # 5
         'class_weight': ['balanced', 'balanced_subsample'],      # 2
-        'ccp_alpha': np.logspace(-5, -2, 8).tolist()             # 8
+        'ccp_alpha': loguniform(1e-5, 1e-2)
     }
 
     rf_base = RandomForestClassifier(
@@ -53,19 +53,18 @@ def tune_random_forest_random(X_train, y_train, n_iter=100):
 
 
 def tune_random_forest_grid(X_train, y_train):
-    """Tune Random Forest using GridSearchCV with massive grid"""
+    """Tune Random Forest using GridSearchCV with expanded grid."""
     print("\n" + "="*60)
     print("Hyperparameter Tuning: Random Forest (GridSearchCV - Massive)")
     print("="*60)
     
-    # Note: Using a slightly reduced grid for GridSearch to avoid infinite runtime
     param_grid = {
-        'n_estimators': [200, 500, 1000, 2000, 3000],
-        'max_depth': [None, 10, 20, 30, 40, 50],
-        'min_samples_split': [2, 5, 10, 15],
-        'min_samples_leaf': [1, 2, 4, 8],
-        'max_features': ['sqrt', 'log2', 0.1, 0.3, 0.5, 0.7, 0.9, None],
-        'criterion': ['gini', 'entropy']
+        'n_estimators': [200, 500, 1000, 2000, 3000, 5000],
+        'max_depth': [None, 8, 12, 20, 30, 40, 50],
+        'min_samples_split': [2, 4, 6, 10, 15, 20],
+        'min_samples_leaf': [1, 2, 3, 4, 6, 8],
+        'max_features': ['sqrt', 'log2', 0.1, 0.2, 0.3, 0.5, 0.7, 0.9, None],
+        'criterion': ['gini', 'entropy', 'log_loss']
     }
     
     rf_base = RandomForestClassifier(
@@ -90,7 +89,7 @@ def tune_random_forest_grid(X_train, y_train):
     return grid_search.best_estimator_
 
 
-def tune_random_forest_bayesian(X_train, y_train, n_trials=30):
+def tune_random_forest_bayesian(X_train, y_train, n_trials=100):
     """Tune Random Forest using Bayesian Optimization (Optuna)"""
     if not OPTUNA_AVAILABLE:
         print("Optuna not installed. Install with: pip install optuna")

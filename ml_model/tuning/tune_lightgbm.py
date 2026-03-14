@@ -1,5 +1,6 @@
 import numpy as np
 from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
+from scipy.stats import randint, uniform, loguniform
 
 try:
     import optuna
@@ -11,7 +12,7 @@ from lightgbm import LGBMClassifier
 from sklearn.utils.class_weight import compute_class_weight
 
 def tune_lightgbm_random(X_train, y_train, n_iter=100):
-    """Tune LightGBM using RandomizedSearchCV with massive grid"""
+    """Tune LightGBM using RandomizedSearchCV with distribution sampling."""
     print("\n" + "="*60)
     print("Hyperparameter Tuning: LightGBM (RandomizedSearchCV - Massive)")
     print("="*60)
@@ -22,34 +23,17 @@ def tune_lightgbm_random(X_train, y_train, n_iter=100):
     sample_weights = np.array([class_weights[int(y)] for y in y_train_lgb])
     
     param_distributions = {
-        'n_estimators': np.arange(100, 5001, 100).tolist(),       # 50 values
-        'max_depth': [-1] + np.arange(5, 51, 5).tolist(),         # 11 values
-        'learning_rate': np.logspace(-4, -0.3, 25).tolist(),       # 25 values
-        'num_leaves': np.arange(20, 501, 20).tolist(),             # 25 values
-        'min_child_samples': np.arange(5, 101, 10).tolist(),       # 10 values
-        'subsample': np.arange(0.2, 1.05, 0.2).tolist(),           # 5 values
-        'colsample_bytree': np.arange(0.2, 1.05, 0.2).tolist(),    # 5 values
-        'reg_alpha': np.logspace(-8, 1, 6).tolist(),               # 6 values
-        'reg_lambda': np.logspace(-8, 1, 6).tolist(),              # 6 values
-        'boosting_type': ['gbdt', 'dart']                          # 2 values
+        'n_estimators': randint(100, 5001),
+        'max_depth': [-1] + np.arange(5, 51, 5).tolist(),
+        'learning_rate': loguniform(1e-4, 0.5),
+        'num_leaves': randint(20, 501),
+        'min_child_samples': randint(5, 101),
+        'subsample': uniform(0.2, 0.8),
+        'colsample_bytree': uniform(0.2, 0.8),
+        'reg_alpha': loguniform(1e-8, 10.0),
+        'reg_lambda': loguniform(1e-8, 10.0),
+        'boosting_type': ['gbdt', 'dart']
     }
-    # Total combinations: 50 * 11 * 25 * 25 * 10 * 5 * 5 * 6 * 6 * 2 = 6,187,500,000 (> 2.14B)
-    
-    # Adjusting to exactly < 2.14B
-    param_distributions = {
-        'n_estimators': np.arange(100, 5001, 100).tolist(),       # 50 values
-        'max_depth': [-1] + np.arange(5, 51, 5).tolist(),         # 11 values
-        'learning_rate': np.logspace(-4, -0.3, 20).tolist(),       # 20 values
-        'num_leaves': np.arange(20, 501, 40).tolist(),             # 13 values
-        'min_child_samples': np.arange(5, 101, 10).tolist(),       # 10 values
-        'subsample': np.arange(0.2, 1.05, 0.2).tolist(),           # 5 values
-        'colsample_bytree': np.arange(0.2, 1.05, 0.2).tolist(),    # 5 values
-        'reg_alpha': np.logspace(-8, 1, 7).tolist(),               # 7 values
-        'reg_lambda': np.logspace(-8, 1, 7).tolist(),              # 7 values
-        'boosting_type': ['gbdt', 'dart']                          # 2 values
-    }
-    # Total combinations: 50 * 11 * 20 * 13 * 10 * 5 * 5 * 7 * 7 * 2 = 1,750,700,000
-    # ~1.75 Billion (Safely approaching 2.1B)
     
     lgb_base = LGBMClassifier(
         random_state=42,
@@ -76,7 +60,7 @@ def tune_lightgbm_random(X_train, y_train, n_iter=100):
 
 
 def tune_lightgbm_grid(X_train, y_train):
-    """Tune LightGBM using GridSearchCV with massive grid"""
+    """Tune LightGBM using GridSearchCV with expanded grid."""
     print("\n" + "="*60)
     print("Hyperparameter Tuning: LightGBM (GridSearchCV - Massive)")
     print("="*60)
@@ -86,15 +70,14 @@ def tune_lightgbm_grid(X_train, y_train):
     class_weights = compute_class_weight('balanced', classes=classes, y=y_train_lgb)
     sample_weights = np.array([class_weights[int(y)] for y in y_train_lgb])
     
-    # Reduced grid for GridSearch
     param_grid = {
-        'n_estimators': [500, 1000, 2000, 3000],
-        'max_depth': [-1, 10, 20, 30, 50],
-        'learning_rate': [0.001, 0.01, 0.05, 0.1, 0.2],
-        'num_leaves': [15, 31, 63, 127],
-        'min_child_samples': [10, 20, 30, 50],
-        'subsample': [0.6, 0.8, 1.0],
-        'colsample_bytree': [0.6, 0.8, 1.0],
+        'n_estimators': [200, 500, 1000, 2000, 3000, 5000],
+        'max_depth': [-1, 8, 12, 16, 24, 32, 50],
+        'learning_rate': [0.0001, 0.001, 0.01, 0.05, 0.1, 0.2],
+        'num_leaves': [31, 63, 127, 255, 511],
+        'min_child_samples': [5, 10, 20, 30, 50, 100],
+        'subsample': [0.5, 0.7, 0.8, 0.9, 1.0],
+        'colsample_bytree': [0.5, 0.7, 0.8, 0.9, 1.0],
         'boosting_type': ['gbdt', 'dart']
     }
     
@@ -120,7 +103,7 @@ def tune_lightgbm_grid(X_train, y_train):
     return grid_search.best_estimator_
 
 
-def tune_lightgbm_bayesian(X_train, y_train, n_trials=30):
+def tune_lightgbm_bayesian(X_train, y_train, n_trials=100):
     """Tune LightGBM using Bayesian Optimization (Optuna)"""
     if not OPTUNA_AVAILABLE:
         print("Optuna not installed. Install with: pip install optuna")

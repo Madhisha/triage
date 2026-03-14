@@ -1,5 +1,5 @@
-import numpy as np
 from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
+from scipy.stats import randint, loguniform
 
 try:
     import optuna
@@ -10,27 +10,17 @@ except ImportError:
 from sklearn.ensemble import AdaBoostClassifier
 
 def tune_adaboost_random(X_train, y_train, n_iter=50):
-    """Tune AdaBoost using RandomizedSearchCV with massive grid"""
+    """Tune AdaBoost using RandomizedSearchCV with distribution sampling."""
     print("\n" + "="*60)
     print("Hyperparameter Tuning: AdaBoost (RandomizedSearchCV - Massive)")
     print("="*60)
     
     param_distributions = {
-        'n_estimators': np.arange(50, 5001, 50).tolist(),         # 100
-        'learning_rate': np.logspace(-4, 0.3, 50).tolist(),       # 50
-        'algorithm': ['SAMME', 'SAMME.R']                         # 2
-    }
-    # 100 * 50 * 2 = 10,000 combinations
-    
-    # AdaBoost parameters are inherently limited for the base tree, we can rarely hit 2 Billion 
-    # unless we pass base estimator hyperparams explicitly. But we expand it massively:
-    param_distributions = {
-        'n_estimators': np.arange(10, 5001, 10).tolist(),         # 500
-        'learning_rate': np.logspace(-5, 0.3, 500).tolist(),      # 500
-        'algorithm': ['SAMME', 'SAMME.R'],                        # 2
+        'n_estimators': randint(10, 5001),
+        'learning_rate': loguniform(1e-5, 2.0),
+        'algorithm': ['SAMME', 'SAMME.R'],
         'random_state': [42]
     }
-    # 500 * 500 * 2 = 500,000 combinations (sufficiently massive for AdaBoost base)
     
     ada_base = AdaBoostClassifier(random_state=42)
     
@@ -53,14 +43,14 @@ def tune_adaboost_random(X_train, y_train, n_iter=50):
 
 
 def tune_adaboost_grid(X_train, y_train):
-    """Tune AdaBoost using GridSearchCV with massive grid"""
+    """Tune AdaBoost using GridSearchCV with expanded grid."""
     print("\n" + "="*60)
     print("Hyperparameter Tuning: AdaBoost (GridSearchCV - Massive)")
     print("="*60)
     
     param_grid = {
-        'n_estimators': [100, 500, 1000, 2000, 3000],
-        'learning_rate': [0.001, 0.01, 0.1, 0.5, 1.0, 1.5],
+        'n_estimators': [50, 100, 200, 500, 1000, 2000, 3000, 5000],
+        'learning_rate': [1e-5, 1e-4, 1e-3, 1e-2, 0.1, 0.3, 0.5, 1.0, 1.5, 2.0],
         'algorithm': ['SAMME', 'SAMME.R']
     }
     
@@ -82,7 +72,7 @@ def tune_adaboost_grid(X_train, y_train):
     return grid_search.best_estimator_
 
 
-def tune_adaboost_bayesian(X_train, y_train, n_trials=50):
+def tune_adaboost_bayesian(X_train, y_train, n_trials=100):
     """Tune AdaBoost using Bayesian Optimization (Optuna)"""
     if not OPTUNA_AVAILABLE:
         print("Optuna not installed. Falling back to RandomizedSearchCV...")

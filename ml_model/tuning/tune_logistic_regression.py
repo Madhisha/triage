@@ -1,5 +1,5 @@
-import numpy as np
 from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
+from scipy.stats import randint, loguniform, uniform
 
 try:
     import optuna
@@ -10,7 +10,7 @@ except ImportError:
 from sklearn.linear_model import LogisticRegression
 
 def tune_logistic_regression_random(X_train, y_train, n_iter=50):
-    """Tune Logistic Regression using RandomizedSearchCV with massive grid"""
+    """Tune Logistic Regression using RandomizedSearchCV with distribution sampling."""
     print("\n" + "="*60)
     print("Hyperparameter Tuning: Logistic Regression (RandomizedSearchCV - Massive)")
     print("="*60)
@@ -19,46 +19,46 @@ def tune_logistic_regression_random(X_train, y_train, n_iter=50):
     param_distributions = [
         # l1 with liblinear (multinomial not supported by liblinear)
         {
-            'C': np.logspace(-5, 2, 200).tolist(),                # 200
+            'C': loguniform(1e-5, 1e2),
             'penalty': ['l1'],
             'solver': ['liblinear'],
             'multi_class': ['ovr'],
-            'max_iter': [500, 1000, 2000, 3000, 5000],            # 5
-            'intercept_scaling': [0.5, 1, 1.5, 2, 5],             # 5
+            'max_iter': randint(500, 5001),
+            'intercept_scaling': loguniform(5e-1, 5.0),
             'fit_intercept': [True, False],                       # 2
             'class_weight': ['balanced', None]                    # 2
         },
         # l1 with saga (supports multinomial)
         {
-            'C': np.logspace(-5, 2, 200).tolist(),                # 200
+            'C': loguniform(1e-5, 1e2),
             'penalty': ['l1'],
             'solver': ['saga'],
             'multi_class': ['ovr', 'multinomial'],                # 2
-            'max_iter': [500, 1000, 2000, 3000, 5000],            # 5
-            'intercept_scaling': [0.5, 1, 1.5, 2, 5],             # 5
+            'max_iter': randint(500, 5001),
+            'intercept_scaling': loguniform(5e-1, 5.0),
             'fit_intercept': [True, False],                       # 2
             'class_weight': ['balanced', None]                    # 2
         },
         # l2 penalty solvers
         {
-            'C': np.logspace(-5, 2, 200).tolist(),                # 200
+            'C': loguniform(1e-5, 1e2),
             'penalty': ['l2'],
             'solver': ['lbfgs', 'newton-cg', 'newton-cholesky', 'sag', 'saga'],
             'multi_class': ['ovr', 'multinomial'],                # 2
-            'max_iter': [500, 1000, 2000, 3000, 5000],            # 5
-            'intercept_scaling': [0.5, 1, 1.5, 2, 5],             # 5
+            'max_iter': randint(500, 5001),
+            'intercept_scaling': loguniform(5e-1, 5.0),
             'fit_intercept': [True, False],                       # 2
             'class_weight': ['balanced', None]                    # 2
         },
         # elasticnet penalty (saga only)
         {
-            'C': np.logspace(-5, 2, 200).tolist(),                # 200
+            'C': loguniform(1e-5, 1e2),
             'penalty': ['elasticnet'],
             'solver': ['saga'],
-            'l1_ratio': np.linspace(0, 1, 50).tolist(),           # 50
+            'l1_ratio': uniform(0.0, 1.0),
             'multi_class': ['ovr', 'multinomial'],                # 2
-            'max_iter': [500, 1000, 2000, 3000, 5000],            # 5
-            'intercept_scaling': [0.5, 1, 1.5, 2, 5],             # 5
+            'max_iter': randint(500, 5001),
+            'intercept_scaling': loguniform(5e-1, 5.0),
             'fit_intercept': [True, False],                       # 2
             'class_weight': ['balanced', None]                    # 2
         },
@@ -67,17 +67,16 @@ def tune_logistic_regression_random(X_train, y_train, n_iter=50):
             'penalty': [None],
             'solver': ['lbfgs', 'newton-cg', 'newton-cholesky', 'sag', 'saga'],
             'multi_class': ['ovr', 'multinomial'],                # 2
-            'max_iter': [500, 1000, 2000, 3000, 5000],            # 5
-            'intercept_scaling': [0.5, 1, 1.5, 2, 5],             # 5
+            'max_iter': randint(500, 5001),
+            'intercept_scaling': loguniform(5e-1, 5.0),
             'fit_intercept': [True, False],                       # 2
             'class_weight': ['balanced', None]                    # 2
         }
     ]
-    # Total combinations across all lists remain ~5.3M but exclude invalid pairs.
     
     lr_base = LogisticRegression(class_weight='balanced', random_state=42)
     
-    # Filter combinations (multinomial not supported by liblinear)
+    # Filter warnings from incompatible combinations that can still occur during random sampling.
     import warnings
     warnings.filterwarnings('ignore', category=UserWarning)
     
@@ -100,18 +99,48 @@ def tune_logistic_regression_random(X_train, y_train, n_iter=50):
 
 
 def tune_logistic_regression_grid(X_train, y_train):
-    """Tune Logistic Regression using GridSearchCV with moderate grid"""
+    """Tune Logistic Regression using GridSearchCV with expanded valid grids."""
     print("\n" + "="*60)
     print("Hyperparameter Tuning: Logistic Regression (GridSearchCV - Moderate)")
     print("="*60)
     
-    param_grid = {
-        'C': [0.001, 0.01, 0.1, 1.0, 10.0, 50.0, 100.0],
-        'penalty': ['l1', 'l2'],
-        'solver': ['liblinear', 'saga'],
-        'multi_class': ['ovr', 'multinomial'],
-        'max_iter': [1000, 2000]
-    }
+    param_grid = [
+        {
+            'C': [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0, 10.0, 100.0],
+            'penalty': ['l1'],
+            'solver': ['liblinear'],
+            'multi_class': ['ovr'],
+            'max_iter': [500, 1000, 2000, 3000, 5000]
+        },
+        {
+            'C': [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0, 10.0, 100.0],
+            'penalty': ['l1'],
+            'solver': ['saga'],
+            'multi_class': ['ovr', 'multinomial'],
+            'max_iter': [500, 1000, 2000, 3000, 5000]
+        },
+        {
+            'C': [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0, 10.0, 100.0],
+            'penalty': ['l2'],
+            'solver': ['lbfgs', 'newton-cg', 'newton-cholesky', 'sag', 'saga'],
+            'multi_class': ['ovr', 'multinomial'],
+            'max_iter': [500, 1000, 2000, 3000, 5000]
+        },
+        {
+            'C': [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0, 10.0, 100.0],
+            'penalty': ['elasticnet'],
+            'solver': ['saga'],
+            'l1_ratio': [0.0, 0.2, 0.5, 0.8, 1.0],
+            'multi_class': ['ovr', 'multinomial'],
+            'max_iter': [500, 1000, 2000, 3000, 5000]
+        },
+        {
+            'penalty': [None],
+            'solver': ['lbfgs', 'newton-cg', 'newton-cholesky', 'sag', 'saga'],
+            'multi_class': ['ovr', 'multinomial'],
+            'max_iter': [500, 1000, 2000, 3000, 5000]
+        }
+    ]
     
     lr_base = LogisticRegression(class_weight='balanced', max_iter=2000, random_state=42)
     
@@ -131,7 +160,7 @@ def tune_logistic_regression_grid(X_train, y_train):
     return grid_search.best_estimator_
 
 
-def tune_logistic_regression_bayesian(X_train, y_train, n_trials=50):
+def tune_logistic_regression_bayesian(X_train, y_train, n_trials=100):
     """Tune Logistic Regression using Bayesian Optimization (Optuna)"""
     if not OPTUNA_AVAILABLE:
         print("Optuna not installed. Falling back to RandomizedSearchCV...")

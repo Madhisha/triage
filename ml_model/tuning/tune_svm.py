@@ -1,5 +1,6 @@
 import numpy as np
 from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
+from scipy.stats import randint, uniform, loguniform
 
 try:
     import optuna
@@ -10,31 +11,22 @@ except ImportError:
 from sklearn.svm import SVC
 
 def tune_svm_random(X_train, y_train, n_iter=30):
-    """Tune SVM using RandomizedSearchCV with massive grid"""
+    """Tune SVM using RandomizedSearchCV with distribution sampling."""
     print("\n" + "="*60)
     print("Hyperparameter Tuning: SVM (RandomizedSearchCV - Massive)")
     print("="*60)
     
     param_distributions = {
-        'C': np.logspace(-5, 2, 60).tolist(),                     # 60
-        'kernel': ['linear', 'poly', 'rbf', 'sigmoid'],           # 4
-        'gamma': ['scale', 'auto'] + np.logspace(-5, 1, 60).tolist(), # 62
-        'degree': np.arange(1, 11, 1).tolist(),                   # 10
-        'coef0': np.linspace(0, 50, 60).tolist(),                 # 60
-        'shrinking': [True, False],                               # 2
-        'class_weight': ['balanced', None],                       # 2
-        'tol': np.logspace(-5, -2, 10).tolist(),                  # 10
+        'C': loguniform(1e-5, 1e3),
+        'kernel': ['linear', 'poly', 'rbf', 'sigmoid'],
+        'gamma': ['scale', 'auto'] + np.logspace(-5, 1, 60).tolist(),
+        'degree': randint(1, 21),
+        'coef0': uniform(0.0, 50.0),
+        'shrinking': [True, False],
+        'class_weight': ['balanced', None],
+        'tol': loguniform(1e-5, 1e-2),
         'probability': [True]
     }
-    # 60 * 4 * 62 * 10 * 60 * 2 * 2 * 10 = 357,120,000 (357 Million combinations)
-    
-    # Bump C and coef0 up to reach closer to 2B limit
-    param_distributions['C'] = np.logspace(-5, 3, 100).tolist()           # 100
-    param_distributions['coef0'] = np.linspace(0, 50, 100).tolist()       # 100
-    # 100 * 4 * 62 * 10 * 100 * 2 * 2 * 10 = 992,000,000 (~1 Billion)
-    
-    param_distributions['degree'] = np.arange(1, 21, 1).tolist()          # 20
-    # 100 * 4 * 62 * 20 * 100 * 2 * 2 * 10 = 1,984,000,000 (~1.98 Billion combinations)
     
     svm_base = SVC(class_weight='balanced', random_state=42)
     
@@ -57,15 +49,19 @@ def tune_svm_random(X_train, y_train, n_iter=30):
 
 
 def tune_svm_grid(X_train, y_train):
-    """Tune SVM using GridSearchCV with moderate grid"""
+    """Tune SVM using GridSearchCV with expanded grid."""
     print("\n" + "="*60)
     print("Hyperparameter Tuning: SVM (GridSearchCV - Moderate)")
     print("="*60)
     
     param_grid = {
-        'C': [0.01, 0.1, 1.0, 10.0, 100.0],
+        'C': [1e-5, 1e-3, 1e-2, 1e-1, 1.0, 10.0, 100.0, 1000.0],
         'kernel': ['linear', 'poly', 'rbf', 'sigmoid'],
-        'gamma': ['scale', 'auto', 0.001, 0.01, 0.1],
+        'gamma': ['scale', 'auto', 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0],
+        'degree': [2, 3, 4, 5],
+        'coef0': [0.0, 0.5, 1.0, 5.0, 10.0],
+        'tol': [1e-5, 1e-4, 1e-3, 1e-2],
+        'shrinking': [True, False],
         'probability': [True]
     }
     
@@ -87,7 +83,7 @@ def tune_svm_grid(X_train, y_train):
     return grid_search.best_estimator_
 
 
-def tune_svm_bayesian(X_train, y_train, n_trials=30):
+def tune_svm_bayesian(X_train, y_train, n_trials=100):
     """Tune SVM using Bayesian Optimization (Optuna)"""
     if not OPTUNA_AVAILABLE:
         print("Optuna not installed. Falling back to RandomizedSearchCV...")

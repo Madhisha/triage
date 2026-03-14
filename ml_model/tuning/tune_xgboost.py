@@ -1,5 +1,6 @@
 import numpy as np
 from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
+from scipy.stats import randint, uniform, loguniform
 
 try:
     import optuna
@@ -11,7 +12,7 @@ from xgboost import XGBClassifier
 from sklearn.utils.class_weight import compute_class_weight
 
 def tune_xgboost_random(X_train, y_train, n_iter=100):
-    """Tune XGBoost using RandomizedSearchCV with massive grid"""
+    """Tune XGBoost using RandomizedSearchCV with distribution sampling."""
     print("\n" + "="*60)
     print("Hyperparameter Tuning: XGBoost (RandomizedSearchCV - Massive)")
     print("="*60)
@@ -22,77 +23,19 @@ def tune_xgboost_random(X_train, y_train, n_iter=100):
     sample_weights = np.array([class_weights[int(y)] for y in y_train_xgb])
     
     param_distributions = {
-        'n_estimators': np.arange(100, 5001, 100).tolist(),       # 50 values
-        'max_depth': np.arange(2, 22, 1).tolist(),                 # 20 values
-        'learning_rate': np.logspace(-4, -0.3, 30).tolist(),       # 30 values
-        'subsample': np.arange(0.2, 1.05, 0.2).tolist(),           # 5 values
-        'colsample_bytree': np.arange(0.2, 1.05, 0.2).tolist(),    # 5 values
-        'colsample_bylevel': np.arange(0.4, 1.05, 0.2).tolist(),   # 4 values
-        'min_child_weight': np.arange(1, 46, 3).tolist(),          # 15 values
-        'gamma': np.arange(0, 10.1, 1).tolist(),                   # 11 values
-        'reg_alpha': np.logspace(-8, 1, 8).tolist(),               # 8 values
-        'reg_lambda': np.logspace(-8, 1, 8).tolist(),              # 8 values
-        'scale_pos_weight': [1, 2, 5, 10],                         # 4 values
-        'booster': ['gbtree', 'dart']                              # 2 values
+        'n_estimators': randint(100, 5001),
+        'max_depth': randint(2, 22),
+        'learning_rate': loguniform(1e-4, 0.5),
+        'subsample': uniform(0.2, 0.8),
+        'colsample_bytree': uniform(0.2, 0.8),
+        'colsample_bylevel': uniform(0.2, 0.8),
+        'min_child_weight': randint(1, 31),
+        'gamma': uniform(0.0, 10.0),
+        'reg_alpha': loguniform(1e-8, 10.0),
+        'reg_lambda': loguniform(1e-8, 10.0),
+        'scale_pos_weight': [1, 2, 5, 10],
+        'booster': ['gbtree', 'dart']
     }
-    # Total combinations: 50 * 20 * 30 * 5 * 5 * 4 * 15 * 11 * 8 * 8 * 4 * 2
-    # = 30,000 * 100 * 165 * 64 * 8 = 3,000,000 * 10,560 * 64 = 31,680,000,000 (still too big!)
-    
-    # Recalculating for ~2 Billion exactly
-    param_distributions = {
-        'n_estimators': np.arange(100, 5001, 100).tolist(),       # 50 values
-        'max_depth': np.arange(2, 22, 1).tolist(),                 # 20 values
-        'learning_rate': np.logspace(-4, -0.3, 30).tolist(),       # 30 values
-        'subsample': np.arange(0.2, 1.05, 0.2).tolist(),           # 5 values
-        'colsample_bytree': np.arange(0.2, 1.05, 0.2).tolist(),    # 5 values
-        'colsample_bylevel': np.arange(0.4, 1.05, 0.2).tolist(),   # 4 values
-        'min_child_weight': np.arange(1, 31, 3).tolist(),          # 10 values
-        'gamma': np.arange(0, 5.1, 1).tolist(),                    # 6 values
-        'reg_alpha': np.logspace(-8, 1, 6).tolist(),               # 6 values
-        'reg_lambda': np.logspace(-8, 1, 6).tolist(),              # 6 values
-        'scale_pos_weight': [1, 2, 5, 10],                         # 4 values
-        'booster': ['gbtree', 'dart']                              # 2 values
-    }
-    # Total combinations: 50 * 20 * 30 * 5 * 5 * 4 * 10 * 6 * 6 * 6 * 4 * 2
-    # = 30,000 * 100 * 60 * 36 * 8 = 3,000,000 * 60 * 288 = 180,000,000 * 288 = 51,840,000,000 (still big!)
-    
-    # Let's hit ~2B precisely
-    param_distributions = {
-        'n_estimators': np.arange(100, 5001, 100).tolist(),       # 50 values
-        'max_depth': np.arange(2, 22, 1).tolist(),                 # 20 values
-        'learning_rate': np.logspace(-4, -0.3, 20).tolist(),       # 20 values
-        'subsample': np.arange(0.1, 1.05, 0.2).tolist(),           # 5 values
-        'colsample_bytree': np.arange(0.1, 1.05, 0.2).tolist(),    # 5 values
-        'colsample_bylevel': np.arange(0.4, 1.05, 0.2).tolist(),   # 4 values
-        'min_child_weight': np.arange(1, 31, 3).tolist(),          # 10 values
-        'gamma': np.arange(0, 5.1, 1).tolist(),                    # 6 values
-        'reg_alpha': np.logspace(-8, 1, 6).tolist(),               # 6 values
-        'reg_lambda': np.logspace(-8, 1, 6).tolist(),              # 6 values
-        'scale_pos_weight': [1, 2, 5, 10],                         # 4 values
-        'booster': ['gbtree', 'dart']                              # 2 values
-    }
-    # Total combinations: 50 * 20 * 20 * 5 * 5 * 4 * 10 * 6 * 6 * 6 * 4 * 2 = 34,560,000,000
-    
-    # We must reduce:
-    param_distributions = {
-        'n_estimators': np.arange(100, 5001, 100).tolist(),       # 50 values
-        'max_depth': np.arange(2, 22, 1).tolist(),                 # 20 values
-        'learning_rate': np.logspace(-4, -0.3, 20).tolist(),       # 20 values
-        'subsample': np.arange(0.2, 1.05, 0.2).tolist(),           # 5 values
-        'colsample_bytree': np.arange(0.2, 1.05, 0.2).tolist(),    # 5 values
-        'colsample_bylevel': np.arange(0.5, 1.05, 0.5).tolist(),   # 2 values
-        'min_child_weight': np.arange(1, 31, 3).tolist(),          # 10 values
-        'gamma': np.arange(0, 5.1, 1).tolist(),                    # 6 values
-        'reg_alpha': np.logspace(-8, 1, 5).tolist(),               # 5 values
-        'reg_lambda': np.logspace(-8, 1, 5).tolist(),              # 5 values
-        'scale_pos_weight': [1, 2, 5, 10],                         # 4 values
-        'booster': ['gbtree', 'dart']                              # 2 values
-    }
-    # Total combinations: 50 * 20 * 20 * 5 * 5 * 2 * 10 * 6 * 5 * 5 * 4 * 2 = 1,200,000,000 (1.2 billion)
-    
-    # Increase slightly to hit 2B:
-    param_distributions['colsample_bylevel'] = np.arange(0.4, 1.05, 0.3).tolist() # 3 values instead of 2
-    # 1.2B * 1.5 = 1,800,000,000 combinations (1.8 Billion)
 
     
     xgb_base = XGBClassifier(
@@ -120,7 +63,7 @@ def tune_xgboost_random(X_train, y_train, n_iter=100):
 
 
 def tune_xgboost_grid(X_train, y_train):
-    """Tune XGBoost using GridSearchCV with massive grid"""
+    """Tune XGBoost using GridSearchCV with expanded grid."""
     print("\n" + "="*60)
     print("Hyperparameter Tuning: XGBoost (GridSearchCV - Massive)")
     print("="*60)
@@ -131,13 +74,13 @@ def tune_xgboost_grid(X_train, y_train):
     sample_weights = np.array([class_weights[int(y)] for y in y_train_xgb])
     
     param_grid = {
-        'n_estimators': [500, 1000, 2000, 3000],
-        'max_depth': [4, 6, 8, 10, 14, 20],
-        'learning_rate': [0.0001, 0.001, 0.01, 0.05, 0.1, 0.2],
-        'subsample': [0.7, 0.8, 0.9],
-        'colsample_bytree': [0.6, 0.7, 0.8, 0.9],
-        'min_child_weight': [1, 3, 5, 7],
-        'gamma': [0, 0.1, 0.2]
+        'n_estimators': [200, 500, 1000, 2000, 3000, 5000],
+        'max_depth': [3, 5, 7, 10, 14, 18, 22],
+        'learning_rate': [0.0001, 0.0005, 0.001, 0.01, 0.05, 0.1, 0.2],
+        'subsample': [0.5, 0.7, 0.8, 0.9, 1.0],
+        'colsample_bytree': [0.5, 0.7, 0.8, 0.9, 1.0],
+        'min_child_weight': [1, 3, 5, 7, 10, 15],
+        'gamma': [0, 0.1, 0.2, 0.5, 1.0]
     }
     
     xgb_base = XGBClassifier(
@@ -162,7 +105,7 @@ def tune_xgboost_grid(X_train, y_train):
     return grid_search.best_estimator_
 
 
-def tune_xgboost_bayesian(X_train, y_train, n_trials=30):
+def tune_xgboost_bayesian(X_train, y_train, n_trials=100):
     """Tune XGBoost using Bayesian Optimization (Optuna)"""
     if not OPTUNA_AVAILABLE:
         print("Optuna not installed. Install with: pip install optuna")

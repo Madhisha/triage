@@ -1,5 +1,6 @@
 import numpy as np
 from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
+from scipy.stats import randint, uniform, loguniform
 
 try:
     import optuna
@@ -10,7 +11,7 @@ except ImportError:
 from sklearn.neural_network import MLPClassifier
 
 def tune_mlp_random(X_train, y_train, n_iter=100):
-    """Tune MLP using RandomizedSearchCV with massive grid"""
+    """Tune MLP using RandomizedSearchCV with distribution sampling."""
     print("\n" + "="*60)
     print("Hyperparameter Tuning: MLP (RandomizedSearchCV - Massive)")
     print("="*60)
@@ -27,20 +28,18 @@ def tune_mlp_random(X_train, y_train, n_iter=100):
         'hidden_layer_sizes': layer_options,                      # 13 options
         'activation': ['relu', 'tanh', 'logistic', 'identity'],   # 4 options
         'solver': ['adam', 'sgd', 'lbfgs'],                       # 3 options
-        'alpha': np.logspace(-6, -1, 12).tolist(),                # 12 options
+        'alpha': loguniform(1e-6, 1e-1),
         'batch_size': [16, 32, 64, 128, 256, 'auto'],             # 6 options
         'learning_rate': ['constant', 'invscaling', 'adaptive'],  # 3 options
-        'learning_rate_init': np.logspace(-5, -1, 12).tolist(),   # 12 options
+        'learning_rate_init': loguniform(1e-5, 1e-1),
         'max_iter': [200, 500, 1000, 2000],                       # 4 options
         'early_stopping': [True, False],                          # 2 options
-        'validation_fraction': np.linspace(0.05, 0.2, 4).tolist(),# 4 options
-        'n_iter_no_change': np.arange(5, 31, 5).tolist(),         # 6 options
-        'tol': np.logspace(-5, -2, 6).tolist(),                   # 6 options
-        'momentum': np.linspace(0.0, 1.0, 6).tolist(),            # 6 options
-        'power_t': np.linspace(0.1, 1.0, 5).tolist()              # 5 options
+        'validation_fraction': uniform(0.05, 0.15),
+        'n_iter_no_change': randint(5, 31),
+        'tol': loguniform(1e-5, 1e-2),
+        'momentum': uniform(0.0, 1.0),
+        'power_t': uniform(0.1, 0.9)
     }
-    # Total combinations: 13 * 4 * 3 * 12 * 6 * 3 * 12 * 4 * 2 * 4 * 6 * 6 * 6 * 5 = 2,090,188,800
-    # ~2.09 Billion (safely below 2.14B max int32 value)
     
     mlp_base = MLPClassifier(
         random_state=42,
@@ -66,22 +65,25 @@ def tune_mlp_random(X_train, y_train, n_iter=100):
 
 
 def tune_mlp_grid(X_train, y_train):
-    """Tune MLP using GridSearchCV with massive grid"""
+    """Tune MLP using GridSearchCV with expanded grid."""
     print("\n" + "="*60)
     print("Hyperparameter Tuning: MLP (GridSearchCV - Massive)")
     print("="*60)
     
-    # Note: Very reduced grid for GridSearch
     param_grid = {
-        'hidden_layer_sizes': [(100,), (256,), (512,), (100, 50), (256, 128), (512, 256, 128)],
-        'activation': ['tanh', 'relu'],
-        'solver': ['sgd', 'adam'],
-        'alpha': [0.0001, 0.001, 0.01],
-        'learning_rate': ['constant', 'adaptive'],
-        'learning_rate_init': [0.001, 0.0001],
-        'max_iter': [500, 1000],
-        'batch_size': [32, 64],
-        'early_stopping': [True]
+        'hidden_layer_sizes': [
+            (128,), (256,), (512,), (1024,),
+            (128, 64), (256, 128), (512, 256), (1024, 512),
+            (256, 128, 64), (512, 256, 128), (1024, 512, 256)
+        ],
+        'activation': ['relu', 'tanh', 'logistic', 'identity'],
+        'solver': ['sgd', 'adam', 'lbfgs'],
+        'alpha': [1e-6, 1e-5, 1e-4, 1e-3, 1e-2],
+        'learning_rate': ['constant', 'adaptive', 'invscaling'],
+        'learning_rate_init': [1e-5, 1e-4, 1e-3, 1e-2],
+        'max_iter': [200, 500, 1000, 2000],
+        'batch_size': [16, 32, 64, 128],
+        'early_stopping': [True, False]
     }
     
     mlp_base = MLPClassifier(
@@ -105,7 +107,7 @@ def tune_mlp_grid(X_train, y_train):
     return grid_search.best_estimator_
 
 
-def tune_mlp_bayesian(X_train, y_train, n_trials=30):
+def tune_mlp_bayesian(X_train, y_train, n_trials=100):
     """Tune MLP using Bayesian Optimization (Optuna)"""
     if not OPTUNA_AVAILABLE:
         print("Optuna not installed. Install with: pip install optuna")
