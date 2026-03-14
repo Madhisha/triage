@@ -203,17 +203,20 @@ def train_svm(X_train, y_train):
 def tune_random_forest_random(X_train, y_train, n_iter=100):
     """Tune Random Forest using RandomizedSearchCV with massive grid"""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: Random Forest (RandomizedSearchCV - Massive)")
+    print("Hyperparameter Tuning: Random Forest (RandomizedSearchCV - ~1.43B combos)")
     print("="*60)
     
     param_distributions = {
-        'n_estimators': np.arange(100, 3001, 100).tolist(),
-        'max_depth': [None] + np.arange(5, 51, 5).tolist(),
-        'min_samples_split': np.arange(2, 21, 2).tolist(),
-        'min_samples_leaf': np.arange(1, 11, 1).tolist(),
-        'max_features': ['sqrt', 'log2', 0.1, 0.3, 0.5, 0.7, 0.9, None],
+        'n_estimators': np.arange(100, 3600, 50).tolist(),       # 70
+        'max_depth': [None] + list(range(2, 42, 2)),             # 21
+        'min_samples_split': np.arange(2, 32, 2).tolist(),       # 15
+        'min_samples_leaf': np.arange(1, 30, 2).tolist(),        # 15
+        'max_features': ['sqrt', 'log2', 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, None],
         'bootstrap': [True, False],
-        'criterion': ['gini', 'entropy', 'log_loss']
+        'criterion': ['gini', 'entropy', 'log_loss'],
+        'max_samples': [None, 0.4, 0.6, 0.8, 0.9],
+        'class_weight': ['balanced', 'balanced_subsample'],
+        'ccp_alpha': np.logspace(-5, -2, 8).tolist()
     }
     
     rf_base = RandomForestClassifier(
@@ -339,18 +342,18 @@ def tune_xgboost_random(X_train, y_train, n_iter=100):
     sample_weights = np.array([class_weights[int(y)] for y in y_train_xgb])
     
     param_distributions = {
-        'n_estimators': np.arange(100, 5001, 100).tolist(),
-        'max_depth': np.arange(2, 21, 1).tolist(),
-        'learning_rate': np.logspace(-4, -0.3, 50).tolist(),
-        'subsample': np.arange(0.1, 1.05, 0.05).tolist(),
-        'colsample_bytree': np.arange(0.1, 1.05, 0.05).tolist(),
-        'colsample_bylevel': np.arange(0.1, 1.05, 0.05).tolist(),
-        'min_child_weight': np.arange(1, 31, 1).tolist(),
-        'gamma': np.arange(0, 10.1, 0.1).tolist(),
-        'reg_alpha': np.logspace(-8, 1, 20).tolist(),
-        'reg_lambda': np.logspace(-8, 1, 20).tolist(),
-        'scale_pos_weight': [1, 2, 5, 10],  # Added for imbalance handling
-        'booster': ['gbtree', 'dart']
+        'n_estimators': np.arange(100, 5001, 100).tolist(),       # 50
+        'max_depth': np.arange(2, 22, 1).tolist(),                 # 20
+        'learning_rate': np.logspace(-4, -0.3, 20).tolist(),       # 20
+        'subsample': np.arange(0.2, 1.05, 0.2).tolist(),           # 5
+        'colsample_bytree': np.arange(0.2, 1.05, 0.2).tolist(),    # 5
+        'colsample_bylevel': np.arange(0.4, 1.05, 0.3).tolist(),   # 3
+        'min_child_weight': np.arange(1, 31, 3).tolist(),          # 10
+        'gamma': np.arange(0, 5.1, 1).tolist(),                    # 6
+        'reg_alpha': np.logspace(-8, 1, 5).tolist(),               # 5
+        'reg_lambda': np.logspace(-8, 1, 5).tolist(),              # 5
+        'scale_pos_weight': [1, 2, 5, 10],                         # 4
+        'booster': ['gbtree', 'dart']                              # 2
     }
     
     xgb_base = XGBClassifier(
@@ -494,17 +497,17 @@ def tune_mlp_random(X_train, y_train, n_iter=100):
         'hidden_layer_sizes': layer_options,
         'activation': ['relu', 'tanh', 'logistic', 'identity'],
         'solver': ['adam', 'sgd', 'lbfgs'],
-        'alpha': np.logspace(-6, -1, 30).tolist(),
+        'alpha': np.logspace(-6, -1, 12).tolist(),
         'batch_size': [16, 32, 64, 128, 256, 'auto'],
         'learning_rate': ['constant', 'invscaling', 'adaptive'],
-        'learning_rate_init': np.logspace(-5, -1, 30).tolist(),
+        'learning_rate_init': np.logspace(-5, -1, 12).tolist(),
         'max_iter': [200, 500, 1000, 2000],
         'early_stopping': [True, False],
-        'validation_fraction': np.linspace(0.05, 0.2, 5).tolist(),
+        'validation_fraction': np.linspace(0.05, 0.2, 4).tolist(),
         'n_iter_no_change': np.arange(5, 31, 5).tolist(),
-        'tol': np.logspace(-5, -2, 10).tolist(),
-        'momentum': np.linspace(0.0, 1.0, 11).tolist(),
-        'power_t': np.linspace(0.1, 1.0, 10).tolist()
+        'tol': np.logspace(-5, -2, 6).tolist(),
+        'momentum': np.linspace(0.0, 1.0, 6).tolist(),
+        'power_t': np.linspace(0.1, 1.0, 5).tolist()
     }
     
     mlp_base = MLPClassifier(
@@ -653,16 +656,16 @@ def tune_lightgbm_random(X_train, y_train, n_iter=100):
     sample_weights = np.array([class_weights[int(y)] for y in y_train_lgb])
     
     param_distributions = {
-        'n_estimators': np.arange(100, 5001, 100).tolist(),
-        'max_depth': [-1] + np.arange(5, 51, 5).tolist(),
-        'learning_rate': np.logspace(-4, -0.3, 50).tolist(),
-        'num_leaves': np.arange(20, 501, 20).tolist(),
-        'min_child_samples': np.arange(5, 101, 5).tolist(),
-        'subsample': np.arange(0.1, 1.05, 0.05).tolist(),
-        'colsample_bytree': np.arange(0.1, 1.05, 0.05).tolist(),
-        'reg_alpha': np.logspace(-8, 1, 20).tolist(),
-        'reg_lambda': np.logspace(-8, 1, 20).tolist(),
-        'boosting_type': ['gbdt', 'dart']
+        'n_estimators': np.arange(100, 5001, 100).tolist(),       # 50
+        'max_depth': [-1] + np.arange(5, 51, 5).tolist(),         # 11
+        'learning_rate': np.logspace(-4, -0.3, 20).tolist(),       # 20
+        'num_leaves': np.arange(20, 501, 40).tolist(),             # 13
+        'min_child_samples': np.arange(5, 101, 10).tolist(),       # 10
+        'subsample': np.arange(0.2, 1.05, 0.2).tolist(),           # 5
+        'colsample_bytree': np.arange(0.2, 1.05, 0.2).tolist(),    # 5
+        'reg_alpha': np.logspace(-8, 1, 7).tolist(),               # 7
+        'reg_lambda': np.logspace(-8, 1, 7).tolist(),              # 7
+        'boosting_type': ['gbdt', 'dart']                          # 2
     }
     
     lgb_base = LGBMClassifier(
@@ -802,13 +805,17 @@ def tune_catboost_random(X_train, y_train, n_iter=50):
     class_weight_dict = {i: class_weights[i] for i in range(len(class_weights))}
     
     param_distributions = {
-        'iterations': np.arange(100, 3001, 100).tolist(),
-        'depth': np.arange(2, 13, 1).tolist(),
-        'learning_rate': np.logspace(-3, -0.3, 30).tolist(),
-        'l2_leaf_reg': np.logspace(0, 2, 20).tolist(),
-        'border_count': [32, 64, 128, 255],
+        'iterations': np.arange(100, 5001, 100).tolist(),         # 50
+        'depth': np.arange(2, 13, 1).tolist(),                    # 11
+        'learning_rate': np.logspace(-4, -0.3, 30).tolist(),      # 30
+        'l2_leaf_reg': np.logspace(0, 2, 20).tolist(),            # 20
+        'border_count': [32, 64, 128, 255],                       # 4
         'thread_count': [-1],
-        'random_seed': [42]
+        'random_seed': [42],
+        'subsample': np.arange(0.2, 1.05, 0.2).tolist(),          # 5
+        'colsample_bylevel': np.arange(0.2, 1.05, 0.2).tolist(),  # 5
+        'bagging_temperature': [0, 0.5, 1, 2, 5],                 # 5
+        'random_strength': [1, 5, 10, 20, 50]                     # 5
     }
     
     cat_base = CatBoostClassifier(
@@ -935,9 +942,10 @@ def tune_adaboost_random(X_train, y_train, n_iter=50):
     print("="*60)
     
     param_distributions = {
-        'n_estimators': np.arange(50, 3001, 50).tolist(),
-        'learning_rate': np.logspace(-3, 0.3, 30).tolist(),
-        'algorithm': ['SAMME', 'SAMME.R']
+        'n_estimators': np.arange(10, 5001, 10).tolist(),         # 500
+        'learning_rate': np.logspace(-5, 0.3, 500).tolist(),      # 500
+        'algorithm': ['SAMME', 'SAMME.R'],                        # 2
+        'random_state': [42]
     }
     
     ada_base = AdaBoostClassifier(random_state=42)
@@ -1030,37 +1038,60 @@ def tune_logistic_regression_random(X_train, y_train, n_iter=50):
     print("="*60)
     
     param_distributions = [
-        # l1 penalty solvers
+        # l1 with liblinear (multinomial not supported by liblinear)
         {
-            'C': np.logspace(-5, 2, 40).tolist(),
+            'C': np.logspace(-5, 2, 200).tolist(),
             'penalty': ['l1'],
-            'solver': ['liblinear', 'saga'],
+            'solver': ['liblinear'],
+            'multi_class': ['ovr'],
+            'max_iter': [500, 1000, 2000, 3000, 5000],
+            'intercept_scaling': [0.5, 1, 1.5, 2, 5],
+            'fit_intercept': [True, False],
+            'class_weight': ['balanced', None]
+        },
+        # l1 with saga (supports multinomial)
+        {
+            'C': np.logspace(-5, 2, 200).tolist(),
+            'penalty': ['l1'],
+            'solver': ['saga'],
             'multi_class': ['ovr', 'multinomial'],
-            'max_iter': [2000]
+            'max_iter': [500, 1000, 2000, 3000, 5000],
+            'intercept_scaling': [0.5, 1, 1.5, 2, 5],
+            'fit_intercept': [True, False],
+            'class_weight': ['balanced', None]
         },
         # l2 penalty solvers
         {
-            'C': np.logspace(-5, 2, 40).tolist(),
+            'C': np.logspace(-5, 2, 200).tolist(),
             'penalty': ['l2'],
             'solver': ['lbfgs', 'newton-cg', 'newton-cholesky', 'sag', 'saga'],
             'multi_class': ['ovr', 'multinomial'],
-            'max_iter': [2000]
+            'max_iter': [500, 1000, 2000, 3000, 5000],
+            'intercept_scaling': [0.5, 1, 1.5, 2, 5],
+            'fit_intercept': [True, False],
+            'class_weight': ['balanced', None]
         },
         # elasticnet penalty (saga only)
         {
-            'C': np.logspace(-5, 2, 40).tolist(),
+            'C': np.logspace(-5, 2, 200).tolist(),
             'penalty': ['elasticnet'],
             'solver': ['saga'],
-            'l1_ratio': np.linspace(0, 1, 11).tolist(),
+            'l1_ratio': np.linspace(0, 1, 50).tolist(),
             'multi_class': ['ovr', 'multinomial'],
-            'max_iter': [2000]
+            'max_iter': [500, 1000, 2000, 3000, 5000],
+            'intercept_scaling': [0.5, 1, 1.5, 2, 5],
+            'fit_intercept': [True, False],
+            'class_weight': ['balanced', None]
         },
         # No penalty
         {
             'penalty': [None],
             'solver': ['lbfgs', 'newton-cg', 'newton-cholesky', 'sag', 'saga'],
             'multi_class': ['ovr', 'multinomial'],
-            'max_iter': [2000]
+            'max_iter': [500, 1000, 2000, 3000, 5000],
+            'intercept_scaling': [0.5, 1, 1.5, 2, 5],
+            'fit_intercept': [True, False],
+            'class_weight': ['balanced', None]
         }
     ]
     
@@ -1204,12 +1235,14 @@ def tune_svm_random(X_train, y_train, n_iter=30):
     print("="*60)
     
     param_distributions = {
-        'C': np.logspace(-5, 2, 40).tolist(),
-        'kernel': ['linear', 'poly', 'rbf', 'sigmoid'],
-        'gamma': ['scale', 'auto'] + np.logspace(-5, 1, 20).tolist(),
-        'degree': np.arange(1, 6, 1).tolist(),
-        'coef0': np.linspace(0, 10, 20).tolist(),
-        'shrinking': [True, False],
+        'C': np.logspace(-5, 3, 100).tolist(),                     # 100
+        'kernel': ['linear', 'poly', 'rbf', 'sigmoid'],            # 4
+        'gamma': ['scale', 'auto'] + np.logspace(-5, 1, 60).tolist(), # 62
+        'degree': np.arange(1, 21, 1).tolist(),                    # 20
+        'coef0': np.linspace(0, 50, 100).tolist(),                 # 100
+        'shrinking': [True, False],                                # 2
+        'class_weight': ['balanced', None],                        # 2
+        'tol': np.logspace(-5, -2, 10).tolist(),                   # 10
         'probability': [True]
     }
     
