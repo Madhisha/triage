@@ -154,32 +154,17 @@ def tune_catboost_bayesian(X_train, y_train, n_trials=30):
     return best_model
 
 
-
-
-
 def train_catboost(X_train, y_train):
-    """Train CatBoost Classifier"""
+    """Train CatBoost Classifier using CatBoost defaults."""
     print("\n" + "="*60)
-    print("Training CatBoost Classifier (with Chief Complaint)...")
+    print("Training CatBoost Classifier (default parameters)...")
     print("="*60)
-    print("Note: CatBoost is robust and handles imbalanced data well.")
+    print("Note: Using CatBoostClassifier() defaults.")
 
+    # CatBoost multiclass training expects zero-indexed labels.
     y_train_cat = y_train - 1
 
-    classes = np.unique(y_train_cat)
-    class_weights = compute_class_weight('balanced', classes=classes, y=y_train_cat)
-    class_weight_dict = {i: class_weights[i] for i in range(len(class_weights))}
-
-    cat_model = CatBoostClassifier(
-        iterations=500,
-        depth=8,
-        learning_rate=0.05,
-        l2_leaf_reg=3,
-        class_weights=class_weight_dict,
-        random_seed=42,
-        verbose=100,
-        loss_function='MultiClass'
-    )
+    cat_model = CatBoostClassifier()
 
     cat_model.fit(X_train, y_train_cat)
     print("CatBoost training completed.")

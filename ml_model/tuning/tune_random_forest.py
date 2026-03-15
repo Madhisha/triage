@@ -128,24 +128,14 @@ def tune_random_forest_bayesian(X_train, y_train, n_trials=30):
     return best_model
 
 
-def train_random_forest(X_train, y_train, max_features='log2', n_estimators=1000):
-    """Train Random Forest Classifier (optimized for text + numeric features)"""
+def train_random_forest(X_train, y_train):
+    """Train Random Forest Classifier using sklearn defaults."""
     print("\n" + "="*60)
-    print("Training Random Forest Classifier (with Chief Complaint)...")
+    print("Training Random Forest Classifier (default parameters)...")
     print("="*60)
-    print(f"Note: Using max_features='{max_features}', n_estimators={n_estimators}")
+    print("Note: Using RandomForestClassifier() defaults.")
 
-    rf_model = RandomForestClassifier(
-        n_estimators=n_estimators,
-        max_depth=None,
-        min_samples_split=2,
-        min_samples_leaf=1,
-        max_features=max_features,
-        class_weight='balanced',
-        random_state=42,
-        n_jobs=-1,
-        verbose=1
-    )
+    rf_model = RandomForestClassifier()
 
     rf_model.fit(X_train, y_train)
     print("Random Forest training completed.")

@@ -151,33 +151,22 @@ def tune_xgboost_bayesian(X_train, y_train, n_trials=30):
 
 
 def train_xgboost(X_train, y_train):
-        """Train XGBoost Classifier (handles sparse features well)"""
+    """Train XGBoost Classifier using XGBoost defaults."""
     print("\n" + "="*60)
-        print("Training XGBoost Classifier (with Chief Complaint)...")
+    print("Training XGBoost Classifier (default parameters)...")
     print("="*60)
-        print("Note: Using n_estimators=1000")
+    print("Note: Using XGBClassifier() defaults.")
 
+    # XGBoost multiclass training expects zero-indexed labels.
     y_train_xgb = y_train - 1
 
-        classes = np.unique(y_train_xgb)
-        class_weights = compute_class_weight('balanced', classes=classes, y=y_train_xgb)
-        sample_weights = np.array([class_weights[int(y)] for y in y_train_xgb])
+    classes = np.unique(y_train_xgb)
+    class_weights = compute_class_weight('balanced', classes=classes, y=y_train_xgb)
+    sample_weights = np.array([class_weights[int(y)] for y in y_train_xgb])
 
-        xgb_model = XGBClassifier(
-            n_estimators=1000,
-            max_depth=12,
-            learning_rate=0.05,
-            subsample=0.8,
-            colsample_bytree=0.6,
-            min_child_weight=3,
-            gamma=0.1,
-            random_state=42,
-            n_jobs=-1,
-            verbosity=1,
-            eval_metric='mlogloss'
-        )
+    xgb_model = XGBClassifier()
 
-        xgb_model.fit(X_train, y_train_xgb, sample_weight=sample_weights)
+    xgb_model.fit(X_train, y_train_xgb, sample_weight=sample_weights)
     print("XGBoost training completed.")
     return xgb_model
 

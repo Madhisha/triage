@@ -157,29 +157,13 @@ def tune_mlp_bayesian(X_train, y_train, n_trials=30):
 
 
 def train_mlp(X_train, y_train):
-        """Train Multi-Layer Perceptron (good for text + numeric features)"""
+    """Train Multi-Layer Perceptron using sklearn defaults."""
     print("\n" + "="*60)
-        print("Training MLP Classifier (with Chief Complaint)...")
+    print("Training MLP Classifier (default parameters)...")
     print("="*60)
-        print("Note: Neural networks can learn complex text patterns.")
-        print("Using early stopping to prevent overfitting.")
+    print("Note: Using MLPClassifier() defaults.")
 
-        mlp_model = MLPClassifier(
-            hidden_layer_sizes=(512, 256, 128),
-            activation='relu',
-            solver='adam',
-            alpha=0.001,
-            batch_size=32,
-            learning_rate='adaptive',
-            learning_rate_init=0.0001,
-            max_iter=500,
-            random_state=42,
-            verbose=True,
-            early_stopping=True,
-            validation_fraction=0.1,
-            n_iter_no_change=15,
-            tol=1e-4
-        )
+    mlp_model = MLPClassifier()
 
     mlp_model.fit(X_train, y_train)
     print("MLP training completed.")

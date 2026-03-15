@@ -154,23 +154,14 @@ def tune_svm_bayesian(X_train, y_train, n_trials=30):
     return best_model
 
 
-
-
 def train_svm(X_train, y_train):
-    """Train SVM Classifier"""
+    """Train SVM Classifier using sklearn defaults."""
     print("\n" + "="*60)
-    print("Training SVM Classifier (with Chief Complaint)...")
+    print("Training SVM Classifier (default parameters)...")
     print("="*60)
-    print("Note: SVM can work well with sparse TF-IDF features.")
+    print("Note: Using SVC() defaults.")
 
-    svm_model = SVC(
-        C=10.0,
-        kernel='rbf',
-        gamma='scale',
-        class_weight='balanced',
-        probability=True,
-        random_state=42
-    )
+    svm_model = SVC()
     svm_model.fit(X_train, y_train)
     print("SVM training completed.")
     return svm_model

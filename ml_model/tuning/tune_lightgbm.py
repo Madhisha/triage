@@ -151,30 +151,20 @@ def tune_lightgbm_bayesian(X_train, y_train, n_trials=30):
 
 
 def train_lightgbm(X_train, y_train):
-    """Train LightGBM Classifier (fast and efficient for large datasets)"""
+    """Train LightGBM Classifier using LightGBM defaults."""
     print("\n" + "="*60)
-    print("Training LightGBM Classifier (with Chief Complaint)...")
+    print("Training LightGBM Classifier (default parameters)...")
     print("="*60)
-    print("Note: LightGBM is very fast and memory efficient.")
+    print("Note: Using LGBMClassifier() defaults.")
 
+    # LightGBM multiclass training expects zero-indexed labels.
     y_train_lgb = y_train - 1
 
     classes = np.unique(y_train_lgb)
     class_weights = compute_class_weight('balanced', classes=classes, y=y_train_lgb)
     sample_weights = np.array([class_weights[int(y)] for y in y_train_lgb])
 
-    lgb_model = LGBMClassifier(
-        n_estimators=500,
-        max_depth=15,
-        learning_rate=0.05,
-        num_leaves=20,
-        min_child_samples=10,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        random_state=42,
-        n_jobs=-1,
-        verbose=-1
-    )
+    lgb_model = LGBMClassifier()
 
     lgb_model.fit(X_train, y_train_lgb, sample_weight=sample_weights)
     print("LightGBM training completed.")

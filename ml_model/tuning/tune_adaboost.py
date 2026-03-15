@@ -15,7 +15,7 @@ def tune_adaboost_random(X_train, y_train, n_iter=20):
     print("="*60)
 
     param_distributions = {
-        'n_estimators': [50, 100, 200, 300, 500, 800],
+        'n_estimators': [50, 100, 200, 300, 500, 800, 1000],
         'learning_rate': [0.01, 0.03, 0.05, 0.1, 0.5, 1.0],
         'algorithm': ['SAMME', 'SAMME.R'],
     }
@@ -47,7 +47,7 @@ def tune_adaboost_grid(X_train, y_train):
     print("="*60)
 
     param_grid = {
-        'n_estimators': [100, 200, 300, 500],
+        'n_estimators': [100, 200, 500, 800, 1000],
         'learning_rate': [0.03, 0.05, 0.1, 0.5],
         'algorithm': ['SAMME', 'SAMME.R']
     }
@@ -104,20 +104,14 @@ def tune_adaboost_bayesian(X_train, y_train, n_trials=30):
     return best_model
 
 
-
-
 def train_adaboost(X_train, y_train):
-    """Train AdaBoost Classifier"""
+    """Train AdaBoost Classifier using sklearn defaults."""
     print("\n" + "="*60)
-    print("Training AdaBoost Classifier (with Chief Complaint)...")
+    print("Training AdaBoost Classifier (default parameters)...")
     print("="*60)
-    print("Note: AdaBoost focuses on misclassified samples.")
+    print("Note: Using AdaBoostClassifier() defaults.")
 
-    ada_model = AdaBoostClassifier(
-        n_estimators=100,
-        learning_rate=0.5,
-        random_state=42
-    )
+    ada_model = AdaBoostClassifier()
     
     ada_model.fit(X_train, y_train)
     print("AdaBoost training completed.")

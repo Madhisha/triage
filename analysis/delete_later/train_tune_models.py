@@ -19,28 +19,40 @@ except ImportError:
     OPTUNA_AVAILABLE = False
 
 def load_data():
-    """Load the preprocessed train, validation, and test datasets"""
-    train_df = pd.read_csv("processed_data/train.csv")
-    valid_df = pd.read_csv("processed_data/valid.csv")
-    test_df = pd.read_csv("processed_data/test.csv")
+    """Load the preprocessed train, validation, and test datasets with chief complaint features"""
+    # train_df = pd.read_csv("ml_processed_data/ml_processed_train.csv")
+    # valid_df = pd.read_csv("ml_processed_data/ml_processed_valid.csv")
+    # test_df = pd.read_csv("ml_processed_data/ml_processed_test.csv")
+
+    train_df = pd.read_csv("ml_processed_data/balanced/ml_processed_train.csv")
+    valid_df = pd.read_csv("ml_processed_data/balanced/ml_processed_valid.csv")
+    test_df = pd.read_csv("ml_processed_data/balanced/ml_processed_test.csv")
     
     print(f"Train shape: {train_df.shape}")
     print(f"Validation shape: {valid_df.shape}")
     print(f"Test shape: {test_df.shape}")
     
-    # Count features
-    feature_cols = [col for col in train_df.columns if col != 'triage']
+    # Count feature types
+    tfidf_cols = [col for col in train_df.columns if col.startswith('tfidf_')]
+    numeric_cols = [col for col in train_df.columns if not col.startswith('tfidf_') and col != 'acuity']
     
     print(f"\nFeature breakdown:")
-    print(f"  - Total features: {len(feature_cols)}")
-    print(f"  - Features: {', '.join(feature_cols)}")
+    print(f"  - TF-IDF (Chief Complaint) features: {len(tfidf_cols)}")
+    print(f"  - Physiological features: {len(numeric_cols)}")
+    print(f"  - Total features: {len(tfidf_cols) + len(numeric_cols)}")
     
     return train_df, valid_df, test_df
 
-def prepare_features_target(df, target_col='triage'):
+def prepare_features_target(df, target_col='acuity', merge_classes=False):
     """Separate features and target variable"""
     X = df.drop(columns=[target_col])
     y = df[target_col].copy()
+    
+    # Merge classes 3, 4, 5 into class 3 (high acuity)
+    if merge_classes:
+        y = y.replace({4.0: 3.0, 5.0: 3.0})
+        print("Merged classes 4 and 5 into class 3.")
+        print(f"New class distribution:\n{y.value_counts().sort_index()}")
     
     return X, y
 
@@ -55,7 +67,7 @@ def tune_random_forest_random(X_train, y_train, n_iter=20):
         'max_depth': [10, 20, 30, 40, None],
         'min_samples_split': [2, 5, 10],
         'min_samples_leaf': [1, 2, 4],
-        'max_features': ['sqrt', 'log2', None],  # Suitable for 16 features
+        'max_features': ['sqrt', 'log2', 30, 50],
     }
     
     rf_base = RandomForestClassifier(
@@ -92,7 +104,7 @@ def tune_random_forest_grid(X_train, y_train):
         'max_depth': [20, 30],
         'min_samples_split': [5, 10],
         'min_samples_leaf': [2, 4],
-        'max_features': ['sqrt', 'log2'],  # Suitable for 16 features
+        'max_features': ['sqrt', 30],
     }
     
     rf_base = RandomForestClassifier(
@@ -133,7 +145,7 @@ def tune_random_forest_bayesian(X_train, y_train, n_trials=30):
             'max_depth': trial.suggest_int('max_depth', 10, 40),
             'min_samples_split': trial.suggest_int('min_samples_split', 2, 10),
             'min_samples_leaf': trial.suggest_int('min_samples_leaf', 1, 4),
-            'max_features': trial.suggest_categorical('max_features', ['sqrt', 'log2', None]),  # Suitable for 16 features
+            'max_features': trial.suggest_categorical('max_features', ['sqrt', 'log2', 30, 50]),
             'class_weight': 'balanced',
             'random_state': 42,
             'n_jobs': -1
@@ -311,7 +323,7 @@ def tune_mlp_random(X_train, y_train, n_iter=20):
     print("="*60)
     
     param_distributions = {
-        'hidden_layer_sizes': [(64,), (128,), (64, 32), (128, 64), (128, 64, 32)],  # Smaller for 16 features
+        'hidden_layer_sizes': [(128, 64), (256, 128), (256, 128, 64), (512, 256, 128)],
         'activation': ['relu', 'tanh'],
         'alpha': [0.0001, 0.001, 0.01],
         'learning_rate_init': [0.0001, 0.001, 0.01],
@@ -352,7 +364,7 @@ def tune_mlp_grid(X_train, y_train):
     print("="*60)
     
     param_grid = {
-        'hidden_layer_sizes': [(128, 64), (128, 64, 32)],  # Smaller for 16 features
+        'hidden_layer_sizes': [(256, 128, 64), (512, 256, 128)],
         'alpha': [0.001, 0.01],
         'learning_rate_init': [0.001],
     }
@@ -395,11 +407,11 @@ def tune_mlp_bayesian(X_train, y_train, n_trials=30):
     print("="*60)
     
     def objective(trial):
-        # Suggest network architecture - smaller for 16 features
-        n_layers = trial.suggest_int('n_layers', 1, 3)
+        # Suggest network architecture
+        n_layers = trial.suggest_int('n_layers', 2, 4)
         layers = []
         for i in range(n_layers):
-            layers.append(trial.suggest_categorical(f'n_units_l{i}', [32, 64, 128, 256]))
+            layers.append(trial.suggest_categorical(f'n_units_l{i}', [64, 128, 256, 512]))
         
         params = {
             'hidden_layer_sizes': tuple(layers),
@@ -590,10 +602,10 @@ def tune_lightgbm_bayesian(X_train, y_train, n_trials=30):
     
     return best_model
 
-def train_random_forest(X_train, y_train, max_features='sqrt', n_estimators=1000):
-    """Train Random Forest Classifier"""
+def train_random_forest(X_train, y_train, max_features='log2', n_estimators=1000):
+    """Train Random Forest Classifier (optimized for text + numeric features)"""
     print("\n" + "="*60)
-    print("Training Random Forest Classifier...")
+    print("Training Random Forest Classifier (with Chief Complaint)...")
     print("="*60)
     print(f"Note: Using max_features='{max_features}', n_estimators={n_estimators}")
     
@@ -614,13 +626,14 @@ def train_random_forest(X_train, y_train, max_features='sqrt', n_estimators=1000
     return rf_model
 
 def train_logistic_regression(X_train, y_train):
-    """Train Logistic Regression"""
+    """Train Logistic Regression (works well with TF-IDF features)"""
     print("\n" + "="*60)
-    print("Training Logistic Regression...")
+    print("Training Logistic Regression (with Chief Complaint)...")
     print("="*60)
+    print("Note: LR is effective for text classification tasks.")
     
     lr_model = LogisticRegression(
-        max_iter=1000,  # Should converge quickly with fewer features
+        max_iter=2000,  # Increased for convergence with more features
         multi_class='multinomial',
         solver='lbfgs',
         class_weight='balanced',
@@ -634,13 +647,13 @@ def train_logistic_regression(X_train, y_train):
     return lr_model
 
 def train_xgboost(X_train, y_train, n_estimators=1000):
-    """Train XGBoost Classifier"""
+    """Train XGBoost Classifier (handles sparse features well)"""
     print("\n" + "="*60)
-    print("Training XGBoost Classifier...")
+    print("Training XGBoost Classifier (with Chief Complaint)...")
     print("="*60)
     print(f"Note: Using n_estimators={n_estimators}")
     
-    # Convert labels to 0-indexed for XGBoost (1,2,3,4 -> 0,1,2,3)
+    # Convert labels to 0-indexed for XGBoost (1,2,3,4,5 -> 0,1,2,3,4)
     y_train_xgb = y_train - 1
     
     # Compute class weights for XGBoost
@@ -650,10 +663,10 @@ def train_xgboost(X_train, y_train, n_estimators=1000):
     
     xgb_model = XGBClassifier(
         n_estimators=n_estimators,  # Increased for complex patterns
-        max_depth=12,  # Moderate depth
+        max_depth=12,  # Moderate depth for text features
         learning_rate=0.05,  # Lower for better generalization
         subsample=0.8,
-        colsample_bytree=0.8,
+        colsample_bytree=0.6,  # Reduced to handle many features
         min_child_weight=3,
         gamma=0.1,
         random_state=42,
@@ -667,20 +680,21 @@ def train_xgboost(X_train, y_train, n_estimators=1000):
     return xgb_model
 
 def train_mlp(X_train, y_train):
-    """Train Multi-Layer Perceptron"""
+    """Train Multi-Layer Perceptron (good for text + numeric features)"""
     print("\n" + "="*60)
-    print("Training MLP Classifier...")
+    print("Training MLP Classifier (with Chief Complaint)...")
     print("="*60)
+    print("Note: Neural networks can learn complex text patterns.")
     print("Using early stopping to prevent overfitting.")
     
     mlp_model = MLPClassifier(
-        hidden_layer_sizes=(128, 64, 32),  # Smaller layers for fewer features
+        hidden_layer_sizes=(512, 256, 128),  # Larger layers for more features
         activation='relu',
         solver='adam',
         alpha=0.001,  # L2 regularization
         batch_size=32,
         learning_rate='adaptive',
-        learning_rate_init=0.001,
+        learning_rate_init=0.0001,
         max_iter=500,
         random_state=42,
         verbose=True,
@@ -695,13 +709,13 @@ def train_mlp(X_train, y_train):
     return mlp_model
 
 def train_catboost(X_train, y_train):
-    """Train CatBoost Classifier"""
+    """Train CatBoost Classifier (handles categorical and text features natively)"""
     print("\n" + "="*60)
-    print("Training CatBoost Classifier...")
+    print("Training CatBoost Classifier (with Chief Complaint)...")
     print("="*60)
     print("Note: CatBoost is robust and handles imbalanced data well.")
     
-    # Convert labels to 0-indexed for CatBoost (1,2,3,4 -> 0,1,2,3)
+    # Convert labels to 0-indexed for CatBoost
     y_train_cat = y_train - 1
     
     # Compute class weights
@@ -725,13 +739,13 @@ def train_catboost(X_train, y_train):
     return cat_model
 
 def train_lightgbm(X_train, y_train):
-    """Train LightGBM Classifier"""
+    """Train LightGBM Classifier (fast and efficient for large datasets)"""
     print("\n" + "="*60)
-    print("Training LightGBM Classifier...")
+    print("Training LightGBM Classifier (with Chief Complaint)...")
     print("="*60)
     print("Note: LightGBM is very fast and memory efficient.")
     
-    # Convert labels to 0-indexed for LightGBM (1,2,3,4 -> 0,1,2,3)
+    # Convert labels to 0-indexed for LightGBM
     y_train_lgb = y_train - 1
     
     # Compute class weights
@@ -757,9 +771,9 @@ def train_lightgbm(X_train, y_train):
     return lgb_model
 
 def train_adaboost(X_train, y_train):
-    """Train AdaBoost Classifier"""
+    """Train AdaBoost Classifier (adaptive boosting)"""
     print("\n" + "="*60)
-    print("Training AdaBoost Classifier...")
+    print("Training AdaBoost Classifier (with Chief Complaint)...")
     print("="*60)
     print("Note: AdaBoost focuses on misclassified samples.")
     
@@ -796,9 +810,9 @@ def evaluate_model(model, X, y, dataset_name="Dataset", is_xgb=False, is_catboos
         
         # Adjust probabilities for XGBoost/CatBoost/LightGBM (0-indexed)
         if is_xgb or is_catboost or is_lightgbm:
-            # For 0-indexed models, probabilities are already aligned with classes 0,1,2,3
-            # But we need to align them with true labels 1,2,3,4
-            classes = np.array([1, 2, 3, 4])  # True class labels
+            # For 0-indexed models, probabilities are already aligned with classes 0,1,2
+            # But we need to align them with true labels 1,2,3
+            classes = np.array([1, 2, 3])  # True class labels
         else:
             classes = model.classes_
         
@@ -879,7 +893,7 @@ def evaluate_model(model, X, y, dataset_name="Dataset", is_xgb=False, is_catboos
     return accuracy, y_pred
 
 def show_feature_importance(model, feature_names, top_n=20):
-    """Show feature importance for tree-based models"""
+    """Show feature importance for tree-based models, highlighting text vs numeric"""
     if hasattr(model, 'feature_importances_'):
         print("\n" + "="*60)
         print(f"Top {top_n} Most Important Features:")
@@ -887,14 +901,32 @@ def show_feature_importance(model, feature_names, top_n=20):
         importances = model.feature_importances_
         feature_importance_df = pd.DataFrame({
             'Feature': feature_names,
-            'Importance': importances
+            'Importance': importances,
+            'Type': ['Text' if str(f).startswith('tfidf_') else 'Numeric' for f in feature_names]
         }).sort_values(by='Importance', ascending=False).head(top_n)
         
         print(feature_importance_df.to_string(index=False))
+        
+        # Summary statistics
+        text_features = feature_importance_df[feature_importance_df['Type'] == 'Text'].shape[0]
+        numeric_features = top_n - text_features
+        print(f"\nTop {top_n} features: {text_features} Text, {numeric_features} Numeric")
+        
+        # Total importance by type
+        all_importance_df = pd.DataFrame({
+            'Feature': feature_names,
+            'Importance': importances,
+            'Type': ['Text' if str(f).startswith('tfidf_') else 'Numeric' for f in feature_names]
+        })
+        type_importance = all_importance_df.groupby('Type')['Importance'].sum()
+        print(f"\nTotal importance by type:")
+        for ftype, imp in type_importance.items():
+            pct = (imp / importances.sum()) * 100
+            print(f"  {ftype}: {imp:.4f} ({pct:.1f}%)")
 
 def save_model(model, filename):
     """Save trained model to disk"""
-    models_dir = "trained_models"
+    models_dir = "ml_models"
     if not os.path.exists(models_dir):
         os.makedirs(models_dir)
     
@@ -919,10 +951,25 @@ def main():
     X_test, y_test = prepare_features_target(test_df)
     
     print(f"\nTotal features: {len(X_train.columns)}")
-    print(f"Features: {list(X_train.columns)}")
+    tfidf_features = [f for f in X_train.columns if str(f).startswith('tfidf_')]
+    print(f"Sample TF-IDF features: {tfidf_features[:5]}")
+    
+    # Ask user if they want to merge classes
+    print("\nMerge acuity classes 3, 4, 5 into a single class?")
+    print("(This can improve accuracy due to severe class imbalance)")
+    print("1. Yes - Merge to 3 classes (1, 2, 3)")
+    print("2. No - Keep original 5 classes")
+    merge_choice = input("Enter choice (1 or 2): ").strip()
+    
+    merge_classes = merge_choice == '1'
+    
+    if merge_classes:
+        # Re-prepare with merged classes
+        X_train, y_train = prepare_features_target(train_df, merge_classes=True)
+        X_valid, y_valid = prepare_features_target(valid_df, merge_classes=True)
+        X_test, y_test = prepare_features_target(test_df, merge_classes=True)
     
     print(f"\nTarget distribution in training set:")
-    print(f"Classes: 1=Red (urgent), 2=Orange (high), 3=Yellow (medium), 4=Green (low)")
     print(y_train.value_counts().sort_index())
     
     # Ask user for model choice

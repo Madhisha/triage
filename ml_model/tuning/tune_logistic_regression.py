@@ -238,21 +238,13 @@ def tune_logistic_regression_bayesian(X_train, y_train, n_trials=30):
 
 
 def train_logistic_regression(X_train, y_train):
-    """Train Logistic Regression"""
+    """Train Logistic Regression using sklearn defaults."""
     print("\n" + "="*60)
-    print("Training Logistic Regression (with Chief Complaint)...")
+    print("Training Logistic Regression (default parameters)...")
     print("="*60)
-    print("Note: LR is effective for text classification tasks.")
+    print("Note: Using LogisticRegression() defaults.")
 
-    lr_model = LogisticRegression(
-        max_iter=2000,
-        multi_class='multinomial',
-        solver='lbfgs',
-        class_weight='balanced',
-        C=1.0,
-        random_state=42,
-        verbose=1
-    )
+    lr_model = LogisticRegression()
 
     lr_model.fit(X_train, y_train)
     print("Logistic Regression training completed.")

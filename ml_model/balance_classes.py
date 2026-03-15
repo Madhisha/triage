@@ -359,7 +359,7 @@ def balance_datasets(input_dir="ml_processed_data",
     print("\n" + "="*70 + "\n")
 
 
-def main(strategy='undersample_10k', smote_type='regular'):
+def main(strategy='undersample_10k', smote_type='regular', smote_target_count=10000):
     """
     Main execution function
     
@@ -376,12 +376,16 @@ def main(strategy='undersample_10k', smote_type='regular'):
         - 'borderline': Borderline SMOTE
         - 'svm': SVM SMOTE
         - 'adasyn': ADASYN
+    smote_target_count : int
+        Target sample count for class 1 when strategy is 'oversample_smote'.
+        Supported values: 5000 or 10000.
     """
     
     print("\n" + "="*70)
     print(f"CLASS BALANCING STRATEGY: {strategy.upper()}")
     if strategy == 'oversample_smote':
         print(f"SMOTE TYPE: {smote_type.upper()}")
+        print(f"SMOTE TARGET COUNT (CLASS 1): {smote_target_count:,}")
     print("="*70)
     
     # Create output directory
@@ -410,15 +414,15 @@ def main(strategy='undersample_10k', smote_type='regular'):
         strategy_desc = "Class 1: 3,858 samples | Classes 2 & 3: 10,000 samples each"
         
     elif strategy == 'oversample_smote':
-        # Oversample class 1 using SMOTE to 10,000
-        print(f"\nStrategy: Oversample class 1 using {smote_type.upper()} SMOTE to 10,000 samples")
+        # Oversample class 1 using SMOTE to selected target count
+        print(f"\nStrategy: Oversample class 1 using {smote_type.upper()} SMOTE to {smote_target_count:,} samples")
         balanced_train = oversample_minority_class_smote(
             df_train, 
             minority_class=1.0, 
-            target_count=10000,
+            target_count=smote_target_count,
             smote_type=smote_type
         )
-        strategy_desc = f"Class 1: Oversampled to 10,000 using {smote_type.upper()} SMOTE | Classes 2 & 3: Original"
+        strategy_desc = f"Class 1: Oversampled to {smote_target_count:,} using {smote_type.upper()} SMOTE | Classes 2 & 3: Original"
         
     else:
         print(f"\n⚠ Unknown strategy: {strategy}. Using default undersample_10k.")
@@ -487,7 +491,7 @@ def interactive_menu():
     
     Returns:
     --------
-    tuple: (strategy, smote_type)
+    tuple: (strategy, smote_type, smote_target_count)
     """
     print("\n" + "="*70)
     print("CLASS BALANCING - INTERACTIVE MENU")
@@ -509,10 +513,30 @@ def interactive_menu():
             choice = input("\nEnter your choice (1, 2, or 3): ").strip()
             
             if choice == '1':
-                return 'undersample_equal', 'regular'
+                return 'undersample_equal', 'regular', 10000
             elif choice == '2':
-                return 'undersample_10k', 'regular'
+                return 'undersample_10k', 'regular', 10000
             elif choice == '3':
+                # Ask for SMOTE target count
+                print("\n" + "-"*70)
+                print("Select class 1 target count for regular SMOTE:")
+                print("-"*70)
+                print("\n  1. 5,000 samples")
+                print("  2. 10,000 samples")
+                print()
+                print("-"*70)
+
+                while True:
+                    target_choice = input("\nEnter target option (1 or 2): ").strip()
+                    if target_choice == '1':
+                        smote_target_count = 5000
+                        break
+                    elif target_choice == '2':
+                        smote_target_count = 10000
+                        break
+                    else:
+                        print("❌ Invalid choice. Please enter 1 or 2.")
+
                 # Ask for SMOTE type
                 print("\n" + "-"*70)
                 print("Select SMOTE variant:")
@@ -534,13 +558,13 @@ def interactive_menu():
                 while True:
                     smote_choice = input("\nEnter SMOTE type (1, 2, 3, or 4): ").strip()
                     if smote_choice == '1':
-                        return 'oversample_smote', 'regular'
+                        return 'oversample_smote', 'regular', smote_target_count
                     elif smote_choice == '2':
-                        return 'oversample_smote', 'borderline'
+                        return 'oversample_smote', 'borderline', smote_target_count
                     elif smote_choice == '3':
-                        return 'oversample_smote', 'svm'
+                        return 'oversample_smote', 'svm', smote_target_count
                     elif smote_choice == '4':
-                        return 'oversample_smote', 'adasyn'
+                        return 'oversample_smote', 'adasyn', smote_target_count
                     else:
                         print("❌ Invalid choice. Please enter 1, 2, 3, or 4.")
             else:
@@ -571,7 +595,10 @@ Examples:
   python balance_classes.py --strategy undersample_10k
   
   # Oversample class 1 using regular SMOTE to 10,000 samples
-  python balance_classes.py --strategy oversample_smote --smote regular
+    python balance_classes.py --strategy oversample_smote --smote regular --smote-target 10000
+
+    # Oversample class 1 using regular SMOTE to 5,000 samples
+    python balance_classes.py --strategy oversample_smote --smote regular --smote-target 5000
   
   # Oversample class 1 using Borderline SMOTE
   python balance_classes.py --strategy oversample_smote --smote borderline
@@ -599,15 +626,24 @@ Examples:
         choices=['regular', 'borderline', 'svm', 'adasyn'],
         help='SMOTE type when using oversample_smote strategy (default: regular)'
     )
+
+    parser.add_argument(
+        '--smote-target',
+        type=int,
+        default=10000,
+        choices=[5000, 10000],
+        help='Target class-1 sample count for oversample_smote (choices: 5000, 10000; default: 10000)'
+    )
     
     args = parser.parse_args()
     
     # If no strategy provided, show interactive menu
     if args.strategy is None:
-        strategy, smote_type = interactive_menu()
+        strategy, smote_type, smote_target_count = interactive_menu()
     else:
         strategy = args.strategy
         smote_type = args.smote
+        smote_target_count = args.smote_target
     
     # Create output directory for report
     os.makedirs("../analysis", exist_ok=True)
@@ -624,9 +660,10 @@ Examples:
         print(f"Strategy: {strategy}")
         if strategy == 'oversample_smote':
             print(f"SMOTE Type: {smote_type}")
+            print(f"SMOTE Target Count (Class 1): {smote_target_count}")
         print("="*70)
         
-        main(strategy=strategy, smote_type=smote_type)
+        main(strategy=strategy, smote_type=smote_type, smote_target_count=smote_target_count)
         
         print(f"\n{'='*70}")
         print(f"✓ Complete terminal output saved to: analysis/balance_classes.txt")
