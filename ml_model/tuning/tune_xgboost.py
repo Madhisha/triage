@@ -1,6 +1,5 @@
 import numpy as np
 from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
-from scipy.stats import randint, uniform, loguniform
 
 try:
     import optuna
@@ -11,33 +10,27 @@ except ImportError:
 from xgboost import XGBClassifier
 from sklearn.utils.class_weight import compute_class_weight
 
-def tune_xgboost_random(X_train, y_train, n_iter=100):
-    """Tune XGBoost using RandomizedSearchCV with distribution sampling."""
+def tune_xgboost_random(X_train, y_train, n_iter=20):
+    """Tune XGBoost using RandomizedSearchCV"""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: XGBoost (RandomizedSearchCV - Massive)")
+    print("Hyperparameter Tuning: XGBoost (RandomizedSearchCV)")
     print("="*60)
     
     y_train_xgb = y_train - 1
     classes = np.unique(y_train_xgb)
     class_weights = compute_class_weight('balanced', classes=classes, y=y_train_xgb)
     sample_weights = np.array([class_weights[int(y)] for y in y_train_xgb])
-    
+
     param_distributions = {
-        'n_estimators': randint(100, 5001),
-        'max_depth': randint(2, 22),
-        'learning_rate': loguniform(1e-4, 0.5),
-        'subsample': uniform(0.2, 0.8),
-        'colsample_bytree': uniform(0.2, 0.8),
-        'colsample_bylevel': uniform(0.2, 0.8),
-        'min_child_weight': randint(1, 31),
-        'gamma': uniform(0.0, 10.0),
-        'reg_alpha': loguniform(1e-8, 10.0),
-        'reg_lambda': loguniform(1e-8, 10.0),
-        'scale_pos_weight': [1, 2, 5, 10],
-        'booster': ['gbtree', 'dart']
+        'n_estimators': [100, 200, 300, 500, 800, 1000],
+        'max_depth': [3, 5, 7, 10, 12],
+        'learning_rate': [0.01, 0.03, 0.05, 0.1],
+        'subsample': [0.6, 0.8, 0.9, 1.0],
+        'colsample_bytree': [0.6, 0.7, 0.8],
+        'min_child_weight': [1, 3, 5],
+        'gamma': [0, 0.1, 0.2],
     }
 
-    
     xgb_base = XGBClassifier(
         random_state=42,
         n_jobs=-1,
@@ -63,24 +56,23 @@ def tune_xgboost_random(X_train, y_train, n_iter=100):
 
 
 def tune_xgboost_grid(X_train, y_train):
-    """Tune XGBoost using GridSearchCV with expanded grid."""
+    """Tune XGBoost using GridSearchCV"""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: XGBoost (GridSearchCV - Massive)")
+    print("Hyperparameter Tuning: XGBoost (GridSearchCV)")
     print("="*60)
     
     y_train_xgb = y_train - 1
     classes = np.unique(y_train_xgb)
     class_weights = compute_class_weight('balanced', classes=classes, y=y_train_xgb)
     sample_weights = np.array([class_weights[int(y)] for y in y_train_xgb])
-    
+
     param_grid = {
-        'n_estimators': [200, 500, 1000, 2000, 3000, 5000],
-        'max_depth': [3, 5, 7, 10, 14, 18, 22],
-        'learning_rate': [0.0001, 0.0005, 0.001, 0.01, 0.05, 0.1, 0.2],
-        'subsample': [0.5, 0.7, 0.8, 0.9, 1.0],
-        'colsample_bytree': [0.5, 0.7, 0.8, 0.9, 1.0],
-        'min_child_weight': [1, 3, 5, 7, 10, 15],
-        'gamma': [0, 0.1, 0.2, 0.5, 1.0]
+        'n_estimators': [200, 300, 500, 800, 1000],
+        'max_depth': [7, 10, 12],
+        'learning_rate': [0.03, 0.05],
+        'subsample': [0.8],
+        'colsample_bytree': [0.6, 0.8],
+        'min_child_weight': [3, 5],
     }
     
     xgb_base = XGBClassifier(
@@ -105,7 +97,7 @@ def tune_xgboost_grid(X_train, y_train):
     return grid_search.best_estimator_
 
 
-def tune_xgboost_bayesian(X_train, y_train, n_trials=100):
+def tune_xgboost_bayesian(X_train, y_train, n_trials=30):
     """Tune XGBoost using Bayesian Optimization (Optuna)"""
     if not OPTUNA_AVAILABLE:
         print("Optuna not installed. Install with: pip install optuna")
@@ -123,24 +115,20 @@ def tune_xgboost_bayesian(X_train, y_train, n_trials=100):
     
     def objective(trial):
         params = {
-            'n_estimators': trial.suggest_int('n_estimators', 50, 5000),
-            'max_depth': trial.suggest_int('max_depth', 2, 20),
-            'learning_rate': trial.suggest_float('learning_rate', 1e-4, 0.5, log=True),
-            'subsample': trial.suggest_float('subsample', 0.1, 1.0),
-            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.1, 1.0),
-            'colsample_bylevel': trial.suggest_float('colsample_bylevel', 0.1, 1.0),
-            'min_child_weight': trial.suggest_int('min_child_weight', 1, 30),
-            'gamma': trial.suggest_float('gamma', 0, 10.0),
-            'reg_alpha': trial.suggest_float('reg_alpha', 1e-8, 10.0, log=True),
-            'reg_lambda': trial.suggest_float('reg_lambda', 1e-8, 10.0, log=True),
-            'booster': trial.suggest_categorical('booster', ['gbtree', 'dart']),
+            'n_estimators': trial.suggest_int('n_estimators', 100, 1000),
+            'max_depth': trial.suggest_int('max_depth', 3, 15),
+            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.2, log=True),
+            'subsample': trial.suggest_float('subsample', 0.6, 1.0),
+            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
+            'min_child_weight': trial.suggest_int('min_child_weight', 1, 10),
+            'gamma': trial.suggest_float('gamma', 0, 0.5),
             'random_state': 42,
             'n_jobs': -1,
             'eval_metric': 'mlogloss'
         }
         
         xgb = XGBClassifier(**params)
-        
+
         from sklearn.model_selection import cross_val_score
         scores = cross_val_score(xgb, X_train, y_train_xgb, cv=3, scoring='accuracy', n_jobs=-1)
         return scores.mean()
@@ -162,19 +150,34 @@ def tune_xgboost_bayesian(X_train, y_train, n_trials=100):
     return best_model
 
 
-
-
 def train_xgboost(X_train, y_train):
-    """Train XGBoost Classifier with default parameters."""
+        """Train XGBoost Classifier (handles sparse features well)"""
     print("\n" + "="*60)
-    print("Training XGBoost Classifier (default parameters)...")
+        print("Training XGBoost Classifier (with Chief Complaint)...")
     print("="*60)
-    
-    # Convert labels to 0-indexed for XGBoost (1,2,3,4,5 -> 0,1,2,3,4)
+        print("Note: Using n_estimators=1000")
+
     y_train_xgb = y_train - 1
-    
-    xgb_model = XGBClassifier()
-    xgb_model.fit(X_train, y_train_xgb)
+
+        classes = np.unique(y_train_xgb)
+        class_weights = compute_class_weight('balanced', classes=classes, y=y_train_xgb)
+        sample_weights = np.array([class_weights[int(y)] for y in y_train_xgb])
+
+        xgb_model = XGBClassifier(
+            n_estimators=1000,
+            max_depth=12,
+            learning_rate=0.05,
+            subsample=0.8,
+            colsample_bytree=0.6,
+            min_child_weight=3,
+            gamma=0.1,
+            random_state=42,
+            n_jobs=-1,
+            verbosity=1,
+            eval_metric='mlogloss'
+        )
+
+        xgb_model.fit(X_train, y_train_xgb, sample_weight=sample_weights)
     print("XGBoost training completed.")
     return xgb_model
 

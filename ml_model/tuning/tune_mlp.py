@@ -1,6 +1,4 @@
-import numpy as np
 from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
-from scipy.stats import randint, uniform, loguniform
 
 try:
     import optuna
@@ -10,42 +8,30 @@ except ImportError:
 
 from sklearn.neural_network import MLPClassifier
 
-def tune_mlp_random(X_train, y_train, n_iter=100):
-    """Tune MLP using RandomizedSearchCV with distribution sampling."""
+def tune_mlp_random(X_train, y_train, n_iter=20):
+    """Tune MLP using RandomizedSearchCV"""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: MLP (RandomizedSearchCV - Massive)")
+    print("Hyperparameter Tuning: MLP (RandomizedSearchCV)")
     print("="*60)
-    
-    # Granular layer sizes
-    layer_options = [
-        (128,), (256,), (512,), (1024,),
-        (128, 64), (256, 128), (512, 256), (1024, 512),
-        (256, 128, 64), (512, 256, 128), (1024, 512, 256),
-        (256, 128, 64, 32), (512, 256, 128, 64)
-    ]
-    
+
     param_distributions = {
-        'hidden_layer_sizes': layer_options,                      # 13 options
-        'activation': ['relu', 'tanh', 'logistic', 'identity'],   # 4 options
-        'solver': ['adam', 'sgd', 'lbfgs'],                       # 3 options
-        'alpha': loguniform(1e-6, 1e-1),
-        'batch_size': [16, 32, 64, 128, 256, 'auto'],             # 6 options
-        'learning_rate': ['constant', 'invscaling', 'adaptive'],  # 3 options
-        'learning_rate_init': loguniform(1e-5, 1e-1),
-        'max_iter': [200, 500, 1000, 2000],                       # 4 options
-        'early_stopping': [True, False],                          # 2 options
-        'validation_fraction': uniform(0.05, 0.15),
-        'n_iter_no_change': randint(5, 31),
-        'tol': loguniform(1e-5, 1e-2),
-        'momentum': uniform(0.0, 1.0),
-        'power_t': uniform(0.1, 0.9)
+        'hidden_layer_sizes': [(128, 64), (256, 128), (256, 128, 64), (512, 256, 128)],
+        'activation': ['relu', 'tanh'],
+        'alpha': [0.0001, 0.001, 0.01],
+        'learning_rate_init': [0.0001, 0.001, 0.01],
+        'batch_size': ['auto', 32, 64],
     }
-    
+
     mlp_base = MLPClassifier(
+        solver='adam',
+        max_iter=500,
         random_state=42,
-        verbose=False  # Set to False to keep CV output clean
+        early_stopping=True,
+        validation_fraction=0.1,
+        n_iter_no_change=15,
+        tol=1e-4
     )
-    
+
     random_search = RandomizedSearchCV(
         mlp_base,
         param_distributions=param_distributions,
@@ -65,32 +51,28 @@ def tune_mlp_random(X_train, y_train, n_iter=100):
 
 
 def tune_mlp_grid(X_train, y_train):
-    """Tune MLP using GridSearchCV with expanded grid."""
+    """Tune MLP using GridSearchCV"""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: MLP (GridSearchCV - Massive)")
+    print("Hyperparameter Tuning: MLP (GridSearchCV)")
     print("="*60)
-    
+
     param_grid = {
-        'hidden_layer_sizes': [
-            (128,), (256,), (512,), (1024,),
-            (128, 64), (256, 128), (512, 256), (1024, 512),
-            (256, 128, 64), (512, 256, 128), (1024, 512, 256)
-        ],
-        'activation': ['relu', 'tanh', 'logistic', 'identity'],
-        'solver': ['sgd', 'adam', 'lbfgs'],
-        'alpha': [1e-6, 1e-5, 1e-4, 1e-3, 1e-2],
-        'learning_rate': ['constant', 'adaptive', 'invscaling'],
-        'learning_rate_init': [1e-5, 1e-4, 1e-3, 1e-2],
-        'max_iter': [200, 500, 1000, 2000],
-        'batch_size': [16, 32, 64, 128],
-        'early_stopping': [True, False]
+        'hidden_layer_sizes': [(256, 128, 64), (512, 256, 128)],
+        'alpha': [0.001, 0.01],
+        'learning_rate_init': [0.001],
     }
-    
+
     mlp_base = MLPClassifier(
+        activation='relu',
+        solver='adam',
+        max_iter=500,
         random_state=42,
-        verbose=False
+        early_stopping=True,
+        validation_fraction=0.1,
+        n_iter_no_change=15,
+        tol=1e-4
     )
-    
+
     grid_search = GridSearchCV(
         mlp_base,
         param_grid=param_grid,
@@ -107,7 +89,7 @@ def tune_mlp_grid(X_train, y_train):
     return grid_search.best_estimator_
 
 
-def tune_mlp_bayesian(X_train, y_train, n_trials=100):
+def tune_mlp_bayesian(X_train, y_train, n_trials=30):
     """Tune MLP using Bayesian Optimization (Optuna)"""
     if not OPTUNA_AVAILABLE:
         print("Optuna not installed. Install with: pip install optuna")
@@ -117,34 +99,30 @@ def tune_mlp_bayesian(X_train, y_train, n_trials=100):
     print("\n" + "="*60)
     print("Hyperparameter Tuning: MLP (Bayesian - Optuna)")
     print("="*60)
-    
+
     def objective(trial):
-        # Suggest network architecture
-        n_layers = trial.suggest_int('n_layers', 1, 5)
+        n_layers = trial.suggest_int('n_layers', 2, 4)
         layers = []
         for i in range(n_layers):
-            layers.append(trial.suggest_categorical(f'n_units_l{i}', [32, 64, 128, 256, 512, 1024]))
-        
+            layers.append(trial.suggest_categorical(f'n_units_l{i}', [64, 128, 256, 512]))
+
         params = {
             'hidden_layer_sizes': tuple(layers),
-            'activation': trial.suggest_categorical('activation', ['relu', 'tanh', 'logistic', 'identity']),
-            'solver': trial.suggest_categorical('solver', ['adam', 'sgd', 'lbfgs']),
-            'alpha': trial.suggest_float('alpha', 1e-6, 1e-1, log=True),
-            'batch_size': trial.suggest_categorical('batch_size', [16, 32, 64, 128, 256, 'auto']),
-            'learning_rate': trial.suggest_categorical('learning_rate', ['constant', 'invscaling', 'adaptive']),
-            'learning_rate_init': trial.suggest_float('learning_rate_init', 1e-5, 1e-1, log=True),
-            'max_iter': trial.suggest_categorical('max_iter', [200, 500, 1000, 2000]),
+            'activation': trial.suggest_categorical('activation', ['relu', 'tanh']),
+            'alpha': trial.suggest_float('alpha', 1e-5, 1e-1, log=True),
+            'learning_rate_init': trial.suggest_float('learning_rate_init', 1e-4, 1e-2, log=True),
+            'batch_size': trial.suggest_categorical('batch_size', [32, 64, 'auto']),
+            'solver': 'adam',
+            'max_iter': 500,
             'random_state': 42,
-            'early_stopping': trial.suggest_categorical('early_stopping', [True, False]),
-            'validation_fraction': trial.suggest_float('validation_fraction', 0.05, 0.2),
-            'n_iter_no_change': trial.suggest_int('n_iter_no_change', 5, 30),
-            'tol': trial.suggest_float('tol', 1e-5, 1e-2, log=True),
-            'momentum': trial.suggest_float('momentum', 0.0, 1.0),
-            'power_t': trial.suggest_float('power_t', 0.1, 1.0)
+            'early_stopping': True,
+            'validation_fraction': 0.1,
+            'n_iter_no_change': 15,
+            'tol': 1e-4
         }
-        
+
         mlp = MLPClassifier(**params)
-        
+
         from sklearn.model_selection import cross_val_score
         scores = cross_val_score(mlp, X_train, y_train, cv=3, scoring='accuracy', n_jobs=-1)
         return scores.mean()
@@ -154,12 +132,11 @@ def tune_mlp_bayesian(X_train, y_train, n_trials=100):
     
     print(f"\nBest parameters: {study.best_params}")
     print(f"Best CV score: {study.best_value:.4f}")
-    
-    # Reconstruct best architecture
+
     best_params = study.best_params
     n_layers = best_params['n_layers']
     layers = tuple([best_params[f'n_units_l{i}'] for i in range(n_layers)])
-    
+
     best_model = MLPClassifier(
         hidden_layer_sizes=layers,
         activation=best_params['activation'],
@@ -179,15 +156,31 @@ def tune_mlp_bayesian(X_train, y_train, n_trials=100):
     return best_model
 
 
-
-
 def train_mlp(X_train, y_train):
-    """Train Multi-Layer Perceptron with default parameters."""
+        """Train Multi-Layer Perceptron (good for text + numeric features)"""
     print("\n" + "="*60)
-    print("Training MLP Classifier (default parameters)...")
+        print("Training MLP Classifier (with Chief Complaint)...")
     print("="*60)
-    mlp_model = MLPClassifier()
-    
+        print("Note: Neural networks can learn complex text patterns.")
+        print("Using early stopping to prevent overfitting.")
+
+        mlp_model = MLPClassifier(
+            hidden_layer_sizes=(512, 256, 128),
+            activation='relu',
+            solver='adam',
+            alpha=0.001,
+            batch_size=32,
+            learning_rate='adaptive',
+            learning_rate_init=0.0001,
+            max_iter=500,
+            random_state=42,
+            verbose=True,
+            early_stopping=True,
+            validation_fraction=0.1,
+            n_iter_no_change=15,
+            tol=1e-4
+        )
+
     mlp_model.fit(X_train, y_train)
     print("MLP training completed.")
     return mlp_model

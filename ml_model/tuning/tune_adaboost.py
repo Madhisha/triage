@@ -1,5 +1,4 @@
 from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
-from scipy.stats import randint, loguniform
 
 try:
     import optuna
@@ -9,21 +8,20 @@ except ImportError:
 
 from sklearn.ensemble import AdaBoostClassifier
 
-def tune_adaboost_random(X_train, y_train, n_iter=50):
-    """Tune AdaBoost using RandomizedSearchCV with distribution sampling."""
+def tune_adaboost_random(X_train, y_train, n_iter=20):
+    """Tune AdaBoost using RandomizedSearchCV"""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: AdaBoost (RandomizedSearchCV - Massive)")
+    print("Hyperparameter Tuning: AdaBoost (RandomizedSearchCV)")
     print("="*60)
-    
+
     param_distributions = {
-        'n_estimators': randint(10, 5001),
-        'learning_rate': loguniform(1e-5, 2.0),
+        'n_estimators': [50, 100, 200, 300, 500, 800],
+        'learning_rate': [0.01, 0.03, 0.05, 0.1, 0.5, 1.0],
         'algorithm': ['SAMME', 'SAMME.R'],
-        'random_state': [42]
     }
-    
+
     ada_base = AdaBoostClassifier(random_state=42)
-    
+
     random_search = RandomizedSearchCV(
         ada_base,
         param_distributions=param_distributions,
@@ -43,19 +41,19 @@ def tune_adaboost_random(X_train, y_train, n_iter=50):
 
 
 def tune_adaboost_grid(X_train, y_train):
-    """Tune AdaBoost using GridSearchCV with expanded grid."""
+    """Tune AdaBoost using GridSearchCV"""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: AdaBoost (GridSearchCV - Massive)")
+    print("Hyperparameter Tuning: AdaBoost (GridSearchCV)")
     print("="*60)
-    
+
     param_grid = {
-        'n_estimators': [50, 100, 200, 500, 1000, 2000, 3000, 5000],
-        'learning_rate': [1e-5, 1e-4, 1e-3, 1e-2, 0.1, 0.3, 0.5, 1.0, 1.5, 2.0],
+        'n_estimators': [100, 200, 300, 500],
+        'learning_rate': [0.03, 0.05, 0.1, 0.5],
         'algorithm': ['SAMME', 'SAMME.R']
     }
-    
+
     ada_base = AdaBoostClassifier(random_state=42)
-    
+
     grid_search = GridSearchCV(
         ada_base,
         param_grid=param_grid,
@@ -72,7 +70,7 @@ def tune_adaboost_grid(X_train, y_train):
     return grid_search.best_estimator_
 
 
-def tune_adaboost_bayesian(X_train, y_train, n_trials=100):
+def tune_adaboost_bayesian(X_train, y_train, n_trials=30):
     """Tune AdaBoost using Bayesian Optimization (Optuna)"""
     if not OPTUNA_AVAILABLE:
         print("Optuna not installed. Falling back to RandomizedSearchCV...")
@@ -84,8 +82,8 @@ def tune_adaboost_bayesian(X_train, y_train, n_trials=100):
     
     def objective(trial):
         params = {
-            'n_estimators': trial.suggest_int('n_estimators', 50, 3000),
-            'learning_rate': trial.suggest_float('learning_rate', 1e-3, 2.0, log=True),
+            'n_estimators': trial.suggest_int('n_estimators', 50, 1000),
+            'learning_rate': trial.suggest_float('learning_rate', 0.01, 1.0, log=True),
             'algorithm': trial.suggest_categorical('algorithm', ['SAMME', 'SAMME.R']),
             'random_state': 42
         }
@@ -109,11 +107,17 @@ def tune_adaboost_bayesian(X_train, y_train, n_trials=100):
 
 
 def train_adaboost(X_train, y_train):
-    """Train AdaBoost Classifier with default parameters."""
+    """Train AdaBoost Classifier"""
     print("\n" + "="*60)
-    print("Training AdaBoost Classifier...")
+    print("Training AdaBoost Classifier (with Chief Complaint)...")
     print("="*60)
-    ada_model = AdaBoostClassifier()
+    print("Note: AdaBoost focuses on misclassified samples.")
+
+    ada_model = AdaBoostClassifier(
+        n_estimators=100,
+        learning_rate=0.5,
+        random_state=42
+    )
     
     ada_model.fit(X_train, y_train)
     print("AdaBoost training completed.")

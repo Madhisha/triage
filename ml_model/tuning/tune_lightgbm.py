@@ -1,6 +1,5 @@
 import numpy as np
 from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
-from scipy.stats import randint, uniform, loguniform
 
 try:
     import optuna
@@ -11,28 +10,25 @@ except ImportError:
 from lightgbm import LGBMClassifier
 from sklearn.utils.class_weight import compute_class_weight
 
-def tune_lightgbm_random(X_train, y_train, n_iter=100):
-    """Tune LightGBM using RandomizedSearchCV with distribution sampling."""
+def tune_lightgbm_random(X_train, y_train, n_iter=20):
+    """Tune LightGBM using RandomizedSearchCV"""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: LightGBM (RandomizedSearchCV - Massive)")
+    print("Hyperparameter Tuning: LightGBM (RandomizedSearchCV)")
     print("="*60)
     
     y_train_lgb = y_train - 1
     classes = np.unique(y_train_lgb)
     class_weights = compute_class_weight('balanced', classes=classes, y=y_train_lgb)
     sample_weights = np.array([class_weights[int(y)] for y in y_train_lgb])
-    
+
     param_distributions = {
-        'n_estimators': randint(100, 5001),
-        'max_depth': [-1] + np.arange(5, 51, 5).tolist(),
-        'learning_rate': loguniform(1e-4, 0.5),
-        'num_leaves': randint(20, 501),
-        'min_child_samples': randint(5, 101),
-        'subsample': uniform(0.2, 0.8),
-        'colsample_bytree': uniform(0.2, 0.8),
-        'reg_alpha': loguniform(1e-8, 10.0),
-        'reg_lambda': loguniform(1e-8, 10.0),
-        'boosting_type': ['gbdt', 'dart']
+        'n_estimators': [100, 200, 300, 500, 800, 1000],
+        'max_depth': [5, 10, 15, 20, -1],
+        'learning_rate': [0.01, 0.03, 0.05, 0.1],
+        'num_leaves': [20, 31, 50, 70],
+        'min_child_samples': [10, 20, 30],
+        'subsample': [0.6, 0.8, 1.0],
+        'colsample_bytree': [0.6, 0.8, 1.0],
     }
     
     lgb_base = LGBMClassifier(
@@ -60,9 +56,9 @@ def tune_lightgbm_random(X_train, y_train, n_iter=100):
 
 
 def tune_lightgbm_grid(X_train, y_train):
-    """Tune LightGBM using GridSearchCV with expanded grid."""
+    """Tune LightGBM using GridSearchCV"""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: LightGBM (GridSearchCV - Massive)")
+    print("Hyperparameter Tuning: LightGBM (GridSearchCV)")
     print("="*60)
     
     y_train_lgb = y_train - 1
@@ -71,14 +67,12 @@ def tune_lightgbm_grid(X_train, y_train):
     sample_weights = np.array([class_weights[int(y)] for y in y_train_lgb])
     
     param_grid = {
-        'n_estimators': [200, 500, 1000, 2000, 3000, 5000],
-        'max_depth': [-1, 8, 12, 16, 24, 32, 50],
-        'learning_rate': [0.0001, 0.001, 0.01, 0.05, 0.1, 0.2],
-        'num_leaves': [31, 63, 127, 255, 511],
-        'min_child_samples': [5, 10, 20, 30, 50, 100],
-        'subsample': [0.5, 0.7, 0.8, 0.9, 1.0],
-        'colsample_bytree': [0.5, 0.7, 0.8, 0.9, 1.0],
-        'boosting_type': ['gbdt', 'dart']
+        'n_estimators': [300, 500, 800, 1000],
+        'max_depth': [10, 15],
+        'learning_rate': [0.03, 0.05],
+        'num_leaves': [31, 50],
+        'subsample': [0.8],
+        'colsample_bytree': [0.8],
     }
     
     lgb_base = LGBMClassifier(
@@ -95,15 +89,15 @@ def tune_lightgbm_grid(X_train, y_train):
         n_jobs=-1,
         verbose=2
     )
-    
+
     grid_search.fit(X_train, y_train_lgb, sample_weight=sample_weights)
     print(f"\nBest parameters: {grid_search.best_params_}")
     print(f"Best CV score: {grid_search.best_score_:.4f}")
-    
+
     return grid_search.best_estimator_
 
 
-def tune_lightgbm_bayesian(X_train, y_train, n_trials=100):
+def tune_lightgbm_bayesian(X_train, y_train, n_trials=30):
     """Tune LightGBM using Bayesian Optimization (Optuna)"""
     if not OPTUNA_AVAILABLE:
         print("Optuna not installed. Install with: pip install optuna")
@@ -121,16 +115,13 @@ def tune_lightgbm_bayesian(X_train, y_train, n_trials=100):
     
     def objective(trial):
         params = {
-            'n_estimators': trial.suggest_int('n_estimators', 50, 5000),
-            'max_depth': trial.suggest_categorical('max_depth', [-1] + list(range(5, 51, 5))),
-            'learning_rate': trial.suggest_float('learning_rate', 1e-4, 0.5, log=True),
-            'num_leaves': trial.suggest_int('num_leaves', 20, 1000),
-            'min_child_samples': trial.suggest_int('min_child_samples', 5, 200),
-            'subsample': trial.suggest_float('subsample', 0.1, 1.0),
-            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.1, 1.0),
-            'reg_alpha': trial.suggest_float('reg_alpha', 1e-8, 10.0, log=True),
-            'reg_lambda': trial.suggest_float('reg_lambda', 1e-8, 10.0, log=True),
-            'boosting_type': trial.suggest_categorical('boosting_type', ['gbdt', 'dart']),
+            'n_estimators': trial.suggest_int('n_estimators', 100, 1000),
+            'max_depth': trial.suggest_int('max_depth', 5, 25),
+            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.2, log=True),
+            'num_leaves': trial.suggest_int('num_leaves', 20, 100),
+            'min_child_samples': trial.suggest_int('min_child_samples', 10, 50),
+            'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
             'random_state': 42,
             'n_jobs': -1,
             'verbose': -1
@@ -159,20 +150,33 @@ def tune_lightgbm_bayesian(X_train, y_train, n_trials=100):
     return best_model
 
 
-
-
-
 def train_lightgbm(X_train, y_train):
-    """Train LightGBM Classifier with default parameters."""
+    """Train LightGBM Classifier (fast and efficient for large datasets)"""
     print("\n" + "="*60)
-    print("Training LightGBM Classifier (default parameters)...")
+    print("Training LightGBM Classifier (with Chief Complaint)...")
     print("="*60)
-    
-    # Convert labels to 0-indexed for LightGBM
+    print("Note: LightGBM is very fast and memory efficient.")
+
     y_train_lgb = y_train - 1
-    
-    lgb_model = LGBMClassifier()
-    lgb_model.fit(X_train, y_train_lgb)
+
+    classes = np.unique(y_train_lgb)
+    class_weights = compute_class_weight('balanced', classes=classes, y=y_train_lgb)
+    sample_weights = np.array([class_weights[int(y)] for y in y_train_lgb])
+
+    lgb_model = LGBMClassifier(
+        n_estimators=500,
+        max_depth=15,
+        learning_rate=0.05,
+        num_leaves=20,
+        min_child_samples=10,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        random_state=42,
+        n_jobs=-1,
+        verbose=-1
+    )
+
+    lgb_model.fit(X_train, y_train_lgb, sample_weight=sample_weights)
     print("LightGBM training completed.")
     return lgb_model
 

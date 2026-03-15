@@ -1,6 +1,5 @@
 import numpy as np
 from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
-from scipy.stats import randint, uniform, loguniform
 
 try:
     import optuna
@@ -10,21 +9,21 @@ except ImportError:
 
 from sklearn.svm import SVC
 
-def tune_svm_random(X_train, y_train, n_iter=30):
-    """Tune SVM using RandomizedSearchCV with distribution sampling."""
+def tune_svm_random(X_train, y_train, n_iter=20):
+    """Tune SVM using RandomizedSearchCV"""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: SVM (RandomizedSearchCV - Massive)")
+    print("Hyperparameter Tuning: SVM (RandomizedSearchCV)")
     print("="*60)
     
     param_distributions = {
-        'C': loguniform(1e-5, 1e3),
+        'C': [0.01, 0.1, 1.0, 10.0, 100.0],
         'kernel': ['linear', 'poly', 'rbf', 'sigmoid'],
-        'gamma': ['scale', 'auto'] + np.logspace(-5, 1, 60).tolist(),
-        'degree': randint(1, 21),
-        'coef0': uniform(0.0, 50.0),
+        'gamma': ['scale', 'auto', 0.001, 0.01, 0.1, 1.0],
+        'degree': [2, 3, 4, 5],
+        'coef0': [0.0, 0.5, 1.0, 2.0],
         'shrinking': [True, False],
-        'class_weight': ['balanced', None],
-        'tol': loguniform(1e-5, 1e-2),
+        'class_weight': ['balanced'],
+        'tol': [1e-4, 1e-3, 1e-2],
         'probability': [True]
     }
     
@@ -49,19 +48,20 @@ def tune_svm_random(X_train, y_train, n_iter=30):
 
 
 def tune_svm_grid(X_train, y_train):
-    """Tune SVM using GridSearchCV with expanded grid."""
+    """Tune SVM using GridSearchCV"""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: SVM (GridSearchCV - Moderate)")
+    print("Hyperparameter Tuning: SVM (GridSearchCV)")
     print("="*60)
     
     param_grid = {
-        'C': [1e-5, 1e-3, 1e-2, 1e-1, 1.0, 10.0, 100.0, 1000.0],
+        'C': [0.1, 1.0, 10.0, 100.0],
         'kernel': ['linear', 'poly', 'rbf', 'sigmoid'],
-        'gamma': ['scale', 'auto', 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0],
-        'degree': [2, 3, 4, 5],
-        'coef0': [0.0, 0.5, 1.0, 5.0, 10.0],
-        'tol': [1e-5, 1e-4, 1e-3, 1e-2],
+        'gamma': ['scale', 'auto', 0.001, 0.01, 0.1],
+        'degree': [2, 3, 4],
+        'coef0': [0.0, 0.5, 1.0, 2.0],
+        'tol': [1e-4, 1e-3, 1e-2],
         'shrinking': [True, False],
+        'class_weight': ['balanced'],
         'probability': [True]
     }
     
@@ -83,7 +83,7 @@ def tune_svm_grid(X_train, y_train):
     return grid_search.best_estimator_
 
 
-def tune_svm_bayesian(X_train, y_train, n_trials=100):
+def tune_svm_bayesian(X_train, y_train, n_trials=30):
     """Tune SVM using Bayesian Optimization (Optuna)"""
     if not OPTUNA_AVAILABLE:
         print("Optuna not installed. Falling back to RandomizedSearchCV...")
@@ -95,23 +95,24 @@ def tune_svm_bayesian(X_train, y_train, n_trials=100):
     
     def objective(trial):
         params = {
-            'C': trial.suggest_float('C', 1e-5, 100, log=True),
+            'C': trial.suggest_float('C', 0.01, 100, log=True),
             'kernel': trial.suggest_categorical('kernel', ['linear', 'poly', 'rbf', 'sigmoid']),
             'gamma': trial.suggest_categorical('gamma_type', ['scale', 'auto', 'custom']),
             'shrinking': trial.suggest_categorical('shrinking', [True, False]),
+            'tol': trial.suggest_categorical('tol', [1e-4, 1e-3, 1e-2]),
             'probability': True,
             'class_weight': 'balanced',
             'random_state': 42
         }
         
         if params['gamma'] == 'custom':
-            params['gamma'] = trial.suggest_float('gamma_value', 1e-5, 10, log=True)
+            params['gamma'] = trial.suggest_float('gamma_value', 0.001, 1.0, log=True)
             
         if params['kernel'] == 'poly':
-            params['degree'] = trial.suggest_int('degree', 1, 5)
-            params['coef0'] = trial.suggest_float('coef0_poly', 0, 10)
+            params['degree'] = trial.suggest_int('degree', 2, 5)
+            params['coef0'] = trial.suggest_float('coef0_poly', 0, 2.0)
         elif params['kernel'] == 'sigmoid':
-            params['coef0'] = trial.suggest_float('coef0_sig', 0, 10)
+            params['coef0'] = trial.suggest_float('coef0_sig', 0, 2.0)
             
         params.pop('gamma_type', None)
             
@@ -131,6 +132,7 @@ def tune_svm_bayesian(X_train, y_train, n_trials=100):
         'C': bp['C'],
         'kernel': bp['kernel'],
         'shrinking': bp['shrinking'],
+        'tol': bp['tol'],
         'probability': True,
         'class_weight': 'balanced',
         'random_state': 42
@@ -155,12 +157,20 @@ def tune_svm_bayesian(X_train, y_train, n_trials=100):
 
 
 def train_svm(X_train, y_train):
-    """Train SVM Classifier with default parameters."""
+    """Train SVM Classifier"""
     print("\n" + "="*60)
-    print("Training SVM Classifier (default parameters)...")
+    print("Training SVM Classifier (with Chief Complaint)...")
     print("="*60)
+    print("Note: SVM can work well with sparse TF-IDF features.")
 
-    svm_model = SVC()
+    svm_model = SVC(
+        C=10.0,
+        kernel='rbf',
+        gamma='scale',
+        class_weight='balanced',
+        probability=True,
+        random_state=42
+    )
     svm_model.fit(X_train, y_train)
     print("SVM training completed.")
     return svm_model

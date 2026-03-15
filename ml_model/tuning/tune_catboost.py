@@ -1,6 +1,5 @@
 import numpy as np
 from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
-from scipy.stats import randint, uniform, loguniform
 
 try:
     import optuna
@@ -11,29 +10,27 @@ except ImportError:
 from catboost import CatBoostClassifier
 from sklearn.utils.class_weight import compute_class_weight
 
-def tune_catboost_random(X_train, y_train, n_iter=50):
-    """Tune CatBoost using RandomizedSearchCV with distribution sampling."""
+def tune_catboost_random(X_train, y_train, n_iter=20):
+    """Tune CatBoost using RandomizedSearchCV"""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: CatBoost (RandomizedSearchCV - Massive)")
+    print("Hyperparameter Tuning: CatBoost (RandomizedSearchCV)")
     print("="*60)
     
     y_train_cat = y_train - 1
     classes = np.unique(y_train_cat)
     class_weights = compute_class_weight('balanced', classes=classes, y=y_train_cat)
     class_weight_dict = {i: class_weights[i] for i in range(len(class_weights))}
-    
+
     param_distributions = {
-        'iterations': randint(100, 5001),
-        'depth': randint(2, 13),
-        'learning_rate': loguniform(1e-4, 0.5),
-        'l2_leaf_reg': loguniform(1.0, 100.0),
-        'border_count': [32, 64, 128, 255],                       # 4
-        'thread_count': [-1],
-        'random_seed': [42],
-        'subsample': uniform(0.2, 0.8),
-        'colsample_bylevel': uniform(0.2, 0.8),
-        'bagging_temperature': [0, 0.5, 1, 2, 5],                 # 5
-        'random_strength': [1, 5, 10, 20, 50]                     # 5
+        'iterations': [200, 300, 500, 800, 1000],
+        'depth': [4, 6, 8, 10],
+        'learning_rate': [0.01, 0.03, 0.05, 0.1],
+        'l2_leaf_reg': [1, 3, 5, 9],
+        'border_count': [64, 128, 255],
+        'subsample': [0.7, 0.8, 1.0],
+        'colsample_bylevel': [0.7, 0.8, 1.0],
+        'bagging_temperature': [0, 0.5, 1],
+        'random_strength': [1, 5, 10]
     }
     
     cat_base = CatBoostClassifier(
@@ -61,22 +58,22 @@ def tune_catboost_random(X_train, y_train, n_iter=50):
 
 
 def tune_catboost_grid(X_train, y_train):
-    """Tune CatBoost using GridSearchCV with expanded grid."""
+    """Tune CatBoost using GridSearchCV"""
     print("\n" + "="*60)
-    print("Hyperparameter Tuning: CatBoost (GridSearchCV - Massive)")
+    print("Hyperparameter Tuning: CatBoost (GridSearchCV)")
     print("="*60)
     
     y_train_cat = y_train - 1
     classes = np.unique(y_train_cat)
     class_weights = compute_class_weight('balanced', classes=classes, y=y_train_cat)
     class_weight_dict = {i: class_weights[i] for i in range(len(class_weights))}
-    
+
     param_grid = {
-        'iterations': [200, 500, 1000, 2000, 3000, 5000],
-        'depth': [2, 4, 6, 8, 10, 12],
-        'learning_rate': [0.0001, 0.001, 0.01, 0.03, 0.05, 0.1, 0.2],
-        'l2_leaf_reg': [1, 3, 5, 9, 20, 50],
-        'border_count': [32, 64, 128, 255]
+        'iterations': [300, 500, 800],
+        'depth': [6, 8],
+        'learning_rate': [0.03, 0.05],
+        'l2_leaf_reg': [3, 5],
+        'border_count': [128, 255]
     }
     
     cat_base = CatBoostClassifier(
@@ -102,7 +99,7 @@ def tune_catboost_grid(X_train, y_train):
     return grid_search.best_estimator_
 
 
-def tune_catboost_bayesian(X_train, y_train, n_trials=100):
+def tune_catboost_bayesian(X_train, y_train, n_trials=30):
     """Tune CatBoost using Bayesian Optimization (Optuna)"""
     if not OPTUNA_AVAILABLE:
         print("Optuna not installed. Falling back to RandomizedSearchCV...")
@@ -119,11 +116,15 @@ def tune_catboost_bayesian(X_train, y_train, n_trials=100):
     
     def objective(trial):
         params = {
-            'iterations': trial.suggest_int('iterations', 100, 5000),
-            'depth': trial.suggest_int('depth', 2, 12),
-            'learning_rate': trial.suggest_float('learning_rate', 1e-4, 0.5, log=True),
-            'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-1, 100, log=True),
-            'border_count': trial.suggest_categorical('border_count', [32, 64, 128, 255]),
+            'iterations': trial.suggest_int('iterations', 200, 1000),
+            'depth': trial.suggest_int('depth', 4, 10),
+            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.2, log=True),
+            'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1.0, 20.0, log=True),
+            'border_count': trial.suggest_categorical('border_count', [64, 128, 255]),
+            'subsample': trial.suggest_float('subsample', 0.6, 1.0),
+            'colsample_bylevel': trial.suggest_float('colsample_bylevel', 0.6, 1.0),
+            'bagging_temperature': trial.suggest_float('bagging_temperature', 0.0, 2.0),
+            'random_strength': trial.suggest_int('random_strength', 1, 10),
             'loss_function': 'MultiClass',
             'class_weights': class_weight_dict,
             'random_seed': 42,
@@ -157,14 +158,29 @@ def tune_catboost_bayesian(X_train, y_train, n_trials=100):
 
 
 def train_catboost(X_train, y_train):
-    """Train CatBoost Classifier with default parameters."""
+    """Train CatBoost Classifier"""
     print("\n" + "="*60)
-    print("Training CatBoost Classifier (default parameters)...")
+    print("Training CatBoost Classifier (with Chief Complaint)...")
     print("="*60)
-    
+    print("Note: CatBoost is robust and handles imbalanced data well.")
+
     y_train_cat = y_train - 1
-    cat_model = CatBoostClassifier()
-    
+
+    classes = np.unique(y_train_cat)
+    class_weights = compute_class_weight('balanced', classes=classes, y=y_train_cat)
+    class_weight_dict = {i: class_weights[i] for i in range(len(class_weights))}
+
+    cat_model = CatBoostClassifier(
+        iterations=500,
+        depth=8,
+        learning_rate=0.05,
+        l2_leaf_reg=3,
+        class_weights=class_weight_dict,
+        random_seed=42,
+        verbose=100,
+        loss_function='MultiClass'
+    )
+
     cat_model.fit(X_train, y_train_cat)
     print("CatBoost training completed.")
     return cat_model
