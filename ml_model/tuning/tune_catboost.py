@@ -21,13 +21,14 @@ def tune_catboost_random(X_train, y_train, n_iter=20):
     class_weights = compute_class_weight('balanced', classes=classes, y=y_train_cat)
     class_weight_dict = {i: class_weights[i] for i in range(len(class_weights))}
 
+    # 'subsample' is only valid with bootstrap_type='Bernoulli'/'MVS'.
+    # CatBoost defaults to Bayesian bootstrap, which uses bagging_temperature instead.
     param_distributions = {
         'iterations': [200, 300, 500, 800, 1000],
         'depth': [4, 6, 8, 10],
         'learning_rate': [0.01, 0.03, 0.05, 0.1],
         'l2_leaf_reg': [1, 3, 5, 9],
         'border_count': [64, 128, 255],
-        'subsample': [0.7, 0.8, 1.0],
         'colsample_bylevel': [0.7, 0.8, 1.0],
         'bagging_temperature': [0, 0.5, 1],
         'random_strength': [1, 5, 10]
@@ -115,13 +116,14 @@ def tune_catboost_bayesian(X_train, y_train, n_trials=30):
     class_weight_dict = {i: class_weights[i] for i in range(len(class_weights))}
     
     def objective(trial):
+        # 'subsample' is only valid with bootstrap_type='Bernoulli'/'MVS'.
+        # CatBoost defaults to Bayesian bootstrap, which uses bagging_temperature instead.
         params = {
             'iterations': trial.suggest_int('iterations', 200, 1000),
             'depth': trial.suggest_int('depth', 4, 10),
             'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.2, log=True),
             'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1.0, 20.0, log=True),
             'border_count': trial.suggest_categorical('border_count', [64, 128, 255]),
-            'subsample': trial.suggest_float('subsample', 0.6, 1.0),
             'colsample_bylevel': trial.suggest_float('colsample_bylevel', 0.6, 1.0),
             'bagging_temperature': trial.suggest_float('bagging_temperature', 0.0, 2.0),
             'random_strength': trial.suggest_int('random_strength', 1, 10),

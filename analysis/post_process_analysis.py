@@ -59,7 +59,7 @@ if __name__ == "__main__":
     with open(output_file, 'w') as f:
         sys.stdout = f
         
-        processed_dir = "processed_data"
+        processed_dir = "../ml_model/ml_processed_data"
         csv_files = glob.glob(os.path.join(processed_dir, "*.csv"))
         
         if not csv_files:

@@ -56,6 +56,8 @@ ml_model/roc_curves/
 # baseline results
 baseline_results/
 
+training_results/
+
 # Results and logs
 *.csv
 *.txt
