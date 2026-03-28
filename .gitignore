@@ -58,6 +58,8 @@ baseline_results/
 
 training_results/
 
+analysis/text_analysis/plots/
+
 # Results and logs
 *.csv
 *.txt
