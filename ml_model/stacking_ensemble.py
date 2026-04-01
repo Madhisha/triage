@@ -1,7 +1,7 @@
 
 """
 Ensemble Model Comparison
-Base Models: MLP, XGBoost, Random Forest
+Base Models: MLP, LightGBM, Random Forest
 Ensemble Types: Hard Voting, Soft Voting, Weighted Voting, Stacking
 Optional Novelty: Stacking with Logistic Regression
 """
@@ -14,8 +14,7 @@ from sklearn.ensemble import RandomForestClassifier, StackingClassifier, VotingC
 from sklearn.neural_network import MLPClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report, f1_score, confusion_matrix
-from sklearn.utils.class_weight import compute_class_weight
-import xgboost as xgb
+from lightgbm import LGBMClassifier
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -75,72 +74,64 @@ def prepare_features(train_df, valid_df, test_df):
 
 
 def train_random_forest(X_train, y_train):
-    """Train Random Forest with optimized parameters"""
+    """Train Random Forest with default parameters"""
     print("\n  Training Random Forest...")
-    rf_model = RandomForestClassifier(
-        n_estimators=1000,
-        max_depth=None,
-        min_samples_split=2,
-        min_samples_leaf=1,
-        max_features='log2',  
-        class_weight='balanced',
-        random_state=42,
-        n_jobs=-1,
-        verbose=1
-    )
+    rf_model = RandomForestClassifier()
     rf_model.fit(X_train, y_train)
     print("  ✅ Random Forest training completed")
     return rf_model
 
 
-def train_xgboost(X_train, y_train):
-    """Train XGBoost with optimized parameters"""
-    print("\n  Training XGBoost...")
-    
-    # Convert labels to 0-indexed for XGBoost
-    y_train_xgb = y_train - y_train.min()
-    
-    # Compute class weights
-    classes = np.unique(y_train_xgb)
-    class_weights = compute_class_weight('balanced', classes=classes, y=y_train_xgb)
-    sample_weights = np.array([class_weights[int(y)] for y in y_train_xgb])
-    
-    xgb_model = xgb.XGBClassifier(
-        n_estimators=1000,  # Increased for complex patterns
-        max_depth=12,  # Moderate depth for text features
-        learning_rate=0.05,  # Lower for better generalization
-        subsample=0.8,
-        colsample_bytree=0.6,  # Reduced to handle many features
-        min_child_weight=3,
-        gamma=0.1,
-        random_state=42,
+def train_lightgbm(X_train, y_train):
+    """Train LightGBM with tuned parameters"""
+    print("\n  Training LightGBM...")
+    lgbm_model = LGBMClassifier(
+        boosting_type='gbdt',
+        class_weight=None,
+        colsample_bytree=0.6,
+        importance_type='split',
+        learning_rate=0.1,
+        max_depth=20,
+        min_child_samples=10,
+        min_child_weight=0.001,
+        min_split_gain=0.0,
+        n_estimators=800,
         n_jobs=-1,
-        verbosity=1,
-        eval_metric='mlogloss'
+        num_leaves=50,
+        objective=None,
+        random_state=42,
+        reg_alpha=0.0,
+        reg_lambda=0.0,
+        subsample=0.8,
+        subsample_for_bin=200000,
+        subsample_freq=0,
+        verbose=-1
     )
-    xgb_model.fit(X_train, y_train_xgb, sample_weight=sample_weights)
-    print("  ✅ XGBoost training completed")
-    return xgb_model
+    lgbm_model.fit(X_train, y_train)
+    print("  ✅ LightGBM training completed")
+    return lgbm_model
 
 
 def train_mlp(X_train, y_train):
-    """Train MLP with optimized parameters"""
+    """Train MLP with tuned parameters"""
     print("\n  Training MLP...")
     mlp_model = MLPClassifier(
-        hidden_layer_sizes=(512, 256, 128),  # Larger layers for more features
-        activation='tanh',
-        solver='adam',
-        alpha=0.01,  # L2 regularization
-        batch_size=32,
-        learning_rate='adaptive',
-        learning_rate_init=0.0001,
-        max_iter=500,
-        random_state=42,
-        verbose=True,
+        activation='relu',
+        alpha=0.001,
+        batch_size='auto',
         early_stopping=True,
-        validation_fraction=0.1,
+        hidden_layer_sizes=(256, 128),
+        learning_rate='constant',
+        learning_rate_init=0.01,
+        max_iter=500,
+        momentum=0.9,
         n_iter_no_change=15,
-        tol=1e-4
+        power_t=0.5,
+        random_state=42,
+        solver='adam',
+        tol=1e-4,
+        validation_fraction=0.1,
+        verbose=False
     )
     mlp_model.fit(X_train, y_train)
     print("  ✅ MLP training completed")
@@ -172,11 +163,9 @@ def load_or_train_base_models(X_train, y_train, X_valid, y_valid, base_models_di
     
     trained_models = {}
     results = {}
-    y_train_min = y_train.min()
-    
     model_info = {
         'Random Forest': ('base_model_random_forest.pkl', train_random_forest),
-        'XGBoost': ('base_model_xgboost.pkl', train_xgboost),
+        'LightGBM': ('base_model_lightgbm.pkl', train_lightgbm),
         'MLP': ('base_model_mlp.pkl', train_mlp)
     }
     
@@ -212,10 +201,7 @@ def load_or_train_base_models(X_train, y_train, X_valid, y_valid, base_models_di
             trained_models[model_name] = model
         
         # Evaluate model on validation set
-        if model_name == 'XGBoost':
-            y_pred = model.predict(X_valid) + y_train_min
-        else:
-            y_pred = model.predict(X_valid)
+        y_pred = model.predict(X_valid)
         
         acc = accuracy_score(y_valid, y_pred)
         f1 = f1_score(y_valid, y_pred, average='macro', zero_division=0)
@@ -264,19 +250,16 @@ def load_ensemble_model(filename, output_dir='ensemble_model'):
     return None
 
 
-def hard_voting_ensemble(trained_models, X_valid, y_valid, y_train_min):
+def hard_voting_ensemble(trained_models, X_valid, y_valid):
     """Hard Voting: Majority vote from base models"""
     
     predictions = {}
     for name, model in trained_models.items():
-        if name == 'XGBoost':
-            predictions[name] = model.predict(X_valid) + y_train_min
-        else:
-            predictions[name] = model.predict(X_valid)
+        predictions[name] = model.predict(X_valid)
     
     # Stack predictions and take mode (majority vote)
     pred_matrix = np.column_stack([predictions['Random Forest'], 
-                                    predictions['XGBoost'], 
+                                    predictions['LightGBM'], 
                                     predictions['MLP']])
     
     from scipy import stats
@@ -289,7 +272,7 @@ def hard_voting_ensemble(trained_models, X_valid, y_valid, y_train_min):
     return acc, f1, hard_vote_pred
 
 
-def soft_voting_ensemble(trained_models, X_valid, y_valid, y_train_min):
+def soft_voting_ensemble(trained_models, X_valid, y_valid):
     """Soft Voting: Average probability predictions"""
     
     probas = []
@@ -297,13 +280,8 @@ def soft_voting_ensemble(trained_models, X_valid, y_valid, y_train_min):
     
     for name, model in trained_models.items():
         proba = model.predict_proba(X_valid)
-        if name == 'XGBoost':
-            # XGBoost classes are 0-indexed
-            if classes is None:
-                classes = np.array(model.classes_) + y_train_min
-        else:
-            if classes is None:
-                classes = model.classes_
+        if classes is None:
+            classes = model.classes_
         probas.append(proba)
     
     # Average probabilities
@@ -316,24 +294,20 @@ def soft_voting_ensemble(trained_models, X_valid, y_valid, y_train_min):
     return acc, f1, soft_vote_pred
 
 
-def weighted_voting_ensemble(trained_models, X_valid, y_valid, y_train_min, weights=None):
+def weighted_voting_ensemble(trained_models, X_valid, y_valid, weights=None):
     """Weighted Voting: Weighted average of probability predictions"""
     
     if weights is None:
         # Default weights based on typical model performance
-        weights = {'Random Forest': 0.35, 'XGBoost': 0.40, 'MLP': 0.25}
+        weights = {'Random Forest': 0.35, 'LightGBM': 0.40, 'MLP': 0.25}
     
     probas = {}
     classes = None
     
     for name, model in trained_models.items():
         proba = model.predict_proba(X_valid)
-        if name == 'XGBoost':
-            if classes is None:
-                classes = np.array(model.classes_) + y_train_min
-        else:
-            if classes is None:
-                classes = model.classes_
+        if classes is None:
+            classes = model.classes_
         probas[name] = proba
     
     # Weighted average of probabilities
@@ -346,20 +320,20 @@ def weighted_voting_ensemble(trained_models, X_valid, y_valid, y_train_min, weig
     return acc, f1, weighted_vote_pred, weights
 
 
-def find_best_weights(trained_models, X_valid, y_valid, y_train_min):
+def find_best_weights(trained_models, X_valid, y_valid):
     """Grid search for optimal weights"""
     
     best_acc = 0
     best_weights = None
     
     for rf_w in np.arange(0.1, 0.6, 0.1):
-        for xgb_w in np.arange(0.1, 0.6, 0.1):
-            mlp_w = 1.0 - rf_w - xgb_w
+        for lgbm_w in np.arange(0.1, 0.6, 0.1):
+            mlp_w = 1.0 - rf_w - lgbm_w
             if mlp_w < 0.05:  # Skip invalid weights
                 continue
             
-            weights = {'Random Forest': rf_w, 'XGBoost': xgb_w, 'MLP': mlp_w}
-            acc, _, _, _ = weighted_voting_ensemble(trained_models, X_valid, y_valid, y_train_min, weights)
+            weights = {'Random Forest': rf_w, 'LightGBM': lgbm_w, 'MLP': mlp_w}
+            acc, _, _, _ = weighted_voting_ensemble(trained_models, X_valid, y_valid, weights)
             
             if acc > best_acc:
                 best_acc = acc
@@ -374,7 +348,7 @@ def stacking_ensemble(X_train, y_train, X_valid, y_valid, trained_models, final_
     # Use the already-trained models as base estimators
     estimators = [
         ('random_forest', trained_models['Random Forest']),
-        ('xgboost', trained_models['XGBoost']),
+        ('lightgbm', trained_models['LightGBM']),
         ('mlp', trained_models['MLP'])
     ]
     
@@ -397,12 +371,9 @@ def stacking_ensemble(X_train, y_train, X_valid, y_valid, trained_models, final_
     
     print(f"\n  Training {name}...")
     
-    # For XGBoost in stacking, we need 0-indexed labels
-    y_train_stacking = y_train - y_train.min()
+    stacking_clf.fit(X_train, y_train)
     
-    stacking_clf.fit(X_train, y_train_stacking)
-    
-    y_pred = stacking_clf.predict(X_valid) + y_train.min()
+    y_pred = stacking_clf.predict(X_valid)
     
     acc = accuracy_score(y_valid, y_pred)
     f1 = f1_score(y_valid, y_pred, average='macro', zero_division=0)
@@ -413,14 +384,12 @@ def stacking_ensemble(X_train, y_train, X_valid, y_valid, trained_models, final_
 def main():
     print("\n" + "=" * 70)
     print("ENSEMBLE MODEL COMPARISON")
-    print("Base Models: MLP, XGBoost, Random Forest")
+    print("Base Models: MLP, LightGBM, Random Forest")
     print("=" * 70)
     
     # Load and prepare data
     train_df, valid_df, test_df = load_data()
     X_train, y_train, X_valid, y_valid, X_test, y_test = prepare_features(train_df, valid_df, test_df)
-    
-    y_train_min = y_train.min()
     
     # Load or train individual base models
     trained_models, base_results = load_or_train_base_models(X_train, y_train, X_valid, y_valid, base_models_dir='base_models')
@@ -482,10 +451,10 @@ def main():
                 estimators=[(name, model) for name, model in trained_models.items()],
                 voting='hard'
             )
-            hard_voting.fit(X_train, y_train - y_train_min)
+            hard_voting.fit(X_train, y_train)
             save_ensemble_model(hard_voting, 'hard_voting_ensemble.pkl')
         ensemble_models['Hard Voting'] = hard_voting
-        hard_acc, hard_f1, hard_pred = hard_voting_ensemble(trained_models, X_valid, y_valid, y_train_min)
+        hard_acc, hard_f1, hard_pred = hard_voting_ensemble(trained_models, X_valid, y_valid)
         ensemble_results['Hard Voting'] = {'accuracy': hard_acc, 'f1': hard_f1}
         print(f"   ✓ Hard Voting: Accuracy = {hard_acc:.4f}, Macro F1 = {hard_f1:.4f}")
     
@@ -498,10 +467,10 @@ def main():
                 estimators=[(name, model) for name, model in trained_models.items()],
                 voting='soft'
             )
-            soft_voting.fit(X_train, y_train - y_train_min)
+            soft_voting.fit(X_train, y_train)
             save_ensemble_model(soft_voting, 'soft_voting_ensemble.pkl')
         ensemble_models['Soft Voting'] = soft_voting
-        soft_acc, soft_f1, soft_pred = soft_voting_ensemble(trained_models, X_valid, y_valid, y_train_min)
+        soft_acc, soft_f1, soft_pred = soft_voting_ensemble(trained_models, X_valid, y_valid)
         ensemble_results['Soft Voting'] = {'accuracy': soft_acc, 'f1': soft_f1}
         print(f"   ✓ Soft Voting: Accuracy = {soft_acc:.4f}, Macro F1 = {soft_f1:.4f}")
     
@@ -511,26 +480,26 @@ def main():
         weighted_voting = load_ensemble_model('weighted_voting_ensemble.pkl')
         if weighted_voting is None:
             print("   Searching for optimal weights...")
-            best_weights, _ = find_best_weights(trained_models, X_valid, y_valid, y_train_min)
+            best_weights, _ = find_best_weights(trained_models, X_valid, y_valid)
             weighted_voting = VotingClassifier(
                 estimators=[(name, model) for name, model in trained_models.items()],
                 voting='soft',
-                weights=[best_weights['Random Forest'], best_weights['XGBoost'], best_weights['MLP']]
+                weights=[best_weights['Random Forest'], best_weights['LightGBM'], best_weights['MLP']]
             )
-            weighted_voting.fit(X_train, y_train - y_train_min)
+            weighted_voting.fit(X_train, y_train)
             save_ensemble_model(weighted_voting, 'weighted_voting_ensemble.pkl')
         else:
             best_weights = {
                 'Random Forest': weighted_voting.weights[0],
-                'XGBoost': weighted_voting.weights[1],
+                'LightGBM': weighted_voting.weights[1],
                 'MLP': weighted_voting.weights[2]
             }
         ensemble_models['Weighted Voting'] = weighted_voting
         weighted_acc, weighted_f1, weighted_pred, weights = weighted_voting_ensemble(
-            trained_models, X_valid, y_valid, y_train_min, best_weights
+            trained_models, X_valid, y_valid, best_weights
         )
         ensemble_results['Weighted Voting'] = {'accuracy': weighted_acc, 'f1': weighted_f1, 'weights': weights}
-        print(f"   Best weights: RF={weights['Random Forest']:.2f}, XGB={weights['XGBoost']:.2f}, MLP={weights['MLP']:.2f}")
+        print(f"   Best weights: RF={weights['Random Forest']:.2f}, LGBM={weights['LightGBM']:.2f}, MLP={weights['MLP']:.2f}")
         print(f"   ✓ Weighted Voting: Accuracy = {weighted_acc:.4f}, Macro F1 = {weighted_f1:.4f}")
     
     # 4. Stacking (with RF final estimator)
@@ -544,7 +513,7 @@ def main():
             save_ensemble_model(stacking_rf, 'stacking_rf_ensemble.pkl')
         else:
             stack_rf_name = "Stacking (Random Forest)"
-            stack_rf_pred = stacking_rf.predict(X_valid) + y_train_min
+            stack_rf_pred = stacking_rf.predict(X_valid)
             stack_rf_acc = accuracy_score(y_valid, stack_rf_pred)
             stack_rf_f1 = f1_score(y_valid, stack_rf_pred, average='macro', zero_division=0)
         ensemble_results['Stacking (RF)'] = {'accuracy': stack_rf_acc, 'f1': stack_rf_f1}
@@ -562,7 +531,7 @@ def main():
             save_ensemble_model(stacking_lr, 'stacking_lr_ensemble.pkl')
         else:
             stack_lr_name = "Stacking (Logistic Regression)"
-            stack_lr_pred = stacking_lr.predict(X_valid) + y_train_min
+            stack_lr_pred = stacking_lr.predict(X_valid)
             stack_lr_acc = accuracy_score(y_valid, stack_lr_pred)
             stack_lr_f1 = f1_score(y_valid, stack_lr_pred, average='macro', zero_division=0)
         ensemble_results['Stacking (LR)'] = {'accuracy': stack_lr_acc, 'f1': stack_lr_f1}
@@ -582,10 +551,7 @@ def main():
     # Individual models on test set (always show for reference)
     print("\n--- Base Models ---")
     for name, model in trained_models.items():
-        if name == 'XGBoost':
-            y_test_pred = model.predict(X_test) + y_train_min
-        else:
-            y_test_pred = model.predict(X_test)
+        y_test_pred = model.predict(X_test)
         
         acc = accuracy_score(y_test, y_test_pred)
         f1 = f1_score(y_test, y_test_pred, average='macro', zero_division=0)
@@ -597,20 +563,20 @@ def main():
     
     # Hard Voting
     if 'Hard Voting' in methods_to_run:
-        hard_test_acc, hard_test_f1, _ = hard_voting_ensemble(trained_models, X_test, y_test, y_train_min)
+        hard_test_acc, hard_test_f1, _ = hard_voting_ensemble(trained_models, X_test, y_test)
         test_results['Hard Voting'] = {'accuracy': hard_test_acc, 'f1': hard_test_f1}
         print(f"  Hard Voting: Accuracy = {hard_test_acc:.4f}, Macro F1 = {hard_test_f1:.4f}")
     
     # Soft Voting
     if 'Soft Voting' in methods_to_run:
-        soft_test_acc, soft_test_f1, _ = soft_voting_ensemble(trained_models, X_test, y_test, y_train_min)
+        soft_test_acc, soft_test_f1, _ = soft_voting_ensemble(trained_models, X_test, y_test)
         test_results['Soft Voting'] = {'accuracy': soft_test_acc, 'f1': soft_test_f1}
         print(f"  Soft Voting: Accuracy = {soft_test_acc:.4f}, Macro F1 = {soft_test_f1:.4f}")
     
     # Weighted Voting
     if 'Weighted Voting' in methods_to_run:
         weighted_test_acc, weighted_test_f1, _, _ = weighted_voting_ensemble(
-            trained_models, X_test, y_test, y_train_min, best_weights
+            trained_models, X_test, y_test, best_weights
         )
         test_results['Weighted Voting'] = {'accuracy': weighted_test_acc, 'f1': weighted_test_f1}
         print(f"  Weighted Voting: Accuracy = {weighted_test_acc:.4f}, Macro F1 = {weighted_test_f1:.4f}")
@@ -618,7 +584,7 @@ def main():
     # # Stacking (RF)
     if 'Stacking (RF)' in methods_to_run:
         stacking_rf = ensemble_models['Stacking (RF)']
-        stack_rf_test_pred = stacking_rf.predict(X_test) + y_train_min
+        stack_rf_test_pred = stacking_rf.predict(X_test)
         stack_rf_test_acc = accuracy_score(y_test, stack_rf_test_pred)
         stack_rf_test_f1 = f1_score(y_test, stack_rf_test_pred, average='macro', zero_division=0)
         test_results['Stacking (RF)'] = {'accuracy': stack_rf_test_acc, 'f1': stack_rf_test_f1}
@@ -627,7 +593,7 @@ def main():
     # Stacking (LR) - NOVELTY
     if 'Stacking (LR)' in methods_to_run:
         stacking_lr = ensemble_models['Stacking (LR)']
-        stack_lr_test_pred = stacking_lr.predict(X_test) + y_train_min
+        stack_lr_test_pred = stacking_lr.predict(X_test)
         stack_lr_test_acc = accuracy_score(y_test, stack_lr_test_pred)
         stack_lr_test_f1 = f1_score(y_test, stack_lr_test_pred, average='macro', zero_division=0)
         test_results['Stacking (LR)'] = {'accuracy': stack_lr_test_acc, 'f1': stack_lr_test_f1}
@@ -644,7 +610,7 @@ def main():
     summary_data = []
     
     # Base models
-    for name in ['Random Forest', 'XGBoost', 'MLP']:
+    for name in ['Random Forest', 'LightGBM', 'MLP']:
         summary_data.append({
             'Model': name,
             'Type': 'Base Model',

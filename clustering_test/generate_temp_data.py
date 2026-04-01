@@ -17,7 +17,7 @@ from collections import defaultdict
 from difflib import SequenceMatcher
 from pathlib import Path
 
-RAW_DIR = Path(__file__).resolve().parent / "raw_data"
+RAW_DIR = Path(__file__).resolve().parent / "../raw_data"
 TEMP_DIR = Path(__file__).resolve().parent / "temp_data"
 
 # Medical abbreviation → full form
