@@ -89,7 +89,6 @@ env.bak/
 venv.bak/
 
 *.log
-*.json
 catboost_info/
 autogluon_models/
 
