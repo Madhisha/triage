@@ -344,6 +344,10 @@ def find_best_weights(trained_models, X_valid, y_valid):
 
 def stacking_ensemble(X_train, y_train, X_valid, y_valid, trained_models, final_estimator='rf'):
     """Stacking Ensemble using already-trained base models with specified final estimator"""
+    # Ensure writable in-memory arrays to avoid joblib memmap writeability errors
+    # with estimators (e.g., MLP) that internally set WRITEABLE flags during fit.
+    X_train_fit = np.array(X_train, copy=True)
+    y_train_fit = np.array(y_train, copy=True)
     
     # Use the already-trained models as base estimators
     estimators = [
@@ -365,13 +369,13 @@ def stacking_ensemble(X_train, y_train, X_valid, y_valid, trained_models, final_
         estimators=estimators,
         final_estimator=final_est,
         cv=5,
-        n_jobs=-1,
+        n_jobs=1,
         passthrough=False
     )
     
     print(f"\n  Training {name}...")
     
-    stacking_clf.fit(X_train, y_train)
+    stacking_clf.fit(X_train_fit, y_train_fit)
     
     y_pred = stacking_clf.predict(X_valid)
     
