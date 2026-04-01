@@ -533,23 +533,23 @@ def main():
         print(f"   Best weights: RF={weights['Random Forest']:.2f}, XGB={weights['XGBoost']:.2f}, MLP={weights['MLP']:.2f}")
         print(f"   ✓ Weighted Voting: Accuracy = {weighted_acc:.4f}, Macro F1 = {weighted_f1:.4f}")
     
-    # # 4. Stacking (with RF final estimator)
-    # if 'Stacking (RF)' in methods_to_run:
-    #     print("\n4. Stacking (Random Forest)...")
-    #     stacking_rf = load_ensemble_model('stacking_rf_ensemble.pkl')
-    #     if stacking_rf is None:
-    #         stacking_rf, stack_rf_acc, stack_rf_f1, stack_rf_name, stack_rf_pred = stacking_ensemble(
-    #             X_train, y_train, X_valid, y_valid, trained_models, final_estimator='rf'
-    #         )
-    #         save_ensemble_model(stacking_rf, 'stacking_rf_ensemble.pkl')
-    #     else:
-    #         stack_rf_name = "Stacking (Random Forest)"
-    #         stack_rf_pred = stacking_rf.predict(X_valid) + y_train_min
-    #         stack_rf_acc = accuracy_score(y_valid, stack_rf_pred)
-    #         stack_rf_f1 = f1_score(y_valid, stack_rf_pred, average='macro', zero_division=0)
-    #     ensemble_results['Stacking (RF)'] = {'accuracy': stack_rf_acc, 'f1': stack_rf_f1}
-    #     ensemble_models['Stacking (RF)'] = stacking_rf
-    #     print(f"   ✓ {stack_rf_name}: Accuracy = {stack_rf_acc:.4f}, Macro F1 = {stack_rf_f1:.4f}")
+    # 4. Stacking (with RF final estimator)
+    if 'Stacking (RF)' in methods_to_run:
+        print("\n4. Stacking (Random Forest)...")
+        stacking_rf = load_ensemble_model('stacking_rf_ensemble.pkl')
+        if stacking_rf is None:
+            stacking_rf, stack_rf_acc, stack_rf_f1, stack_rf_name, stack_rf_pred = stacking_ensemble(
+                X_train, y_train, X_valid, y_valid, trained_models, final_estimator='rf'
+            )
+            save_ensemble_model(stacking_rf, 'stacking_rf_ensemble.pkl')
+        else:
+            stack_rf_name = "Stacking (Random Forest)"
+            stack_rf_pred = stacking_rf.predict(X_valid) + y_train_min
+            stack_rf_acc = accuracy_score(y_valid, stack_rf_pred)
+            stack_rf_f1 = f1_score(y_valid, stack_rf_pred, average='macro', zero_division=0)
+        ensemble_results['Stacking (RF)'] = {'accuracy': stack_rf_acc, 'f1': stack_rf_f1}
+        ensemble_models['Stacking (RF)'] = stacking_rf
+        print(f"   ✓ {stack_rf_name}: Accuracy = {stack_rf_acc:.4f}, Macro F1 = {stack_rf_f1:.4f}")
     
     # 5. Stacking with Logistic Regression (NOVELTY)
     if 'Stacking (LR)' in methods_to_run:
@@ -616,13 +616,13 @@ def main():
         print(f"  Weighted Voting: Accuracy = {weighted_test_acc:.4f}, Macro F1 = {weighted_test_f1:.4f}")
     
     # # Stacking (RF)
-    # if 'Stacking (RF)' in methods_to_run:
-    #     stacking_rf = ensemble_models['Stacking (RF)']
-    #     stack_rf_test_pred = stacking_rf.predict(X_test) + y_train_min
-    #     stack_rf_test_acc = accuracy_score(y_test, stack_rf_test_pred)
-    #     stack_rf_test_f1 = f1_score(y_test, stack_rf_test_pred, average='macro', zero_division=0)
-    #     test_results['Stacking (RF)'] = {'accuracy': stack_rf_test_acc, 'f1': stack_rf_test_f1}
-    #     print(f"  Stacking (RF): Accuracy = {stack_rf_test_acc:.4f}, Macro F1 = {stack_rf_test_f1:.4f}")
+    if 'Stacking (RF)' in methods_to_run:
+        stacking_rf = ensemble_models['Stacking (RF)']
+        stack_rf_test_pred = stacking_rf.predict(X_test) + y_train_min
+        stack_rf_test_acc = accuracy_score(y_test, stack_rf_test_pred)
+        stack_rf_test_f1 = f1_score(y_test, stack_rf_test_pred, average='macro', zero_division=0)
+        test_results['Stacking (RF)'] = {'accuracy': stack_rf_test_acc, 'f1': stack_rf_test_f1}
+        print(f"  Stacking (RF): Accuracy = {stack_rf_test_acc:.4f}, Macro F1 = {stack_rf_test_f1:.4f}")
     
     # Stacking (LR) - NOVELTY
     if 'Stacking (LR)' in methods_to_run:
