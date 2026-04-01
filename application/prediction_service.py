@@ -18,7 +18,12 @@ import os
 import sys
 from typing import Dict, Any
 from sklearn.preprocessing import StandardScaler
-import shap
+try:
+    import shap
+    SHAP_AVAILABLE = True
+except ImportError:
+    SHAP_AVAILABLE = False
+    print("⚠ SHAP not available — explanations will not include SHAP analysis.")
 
 # Add parent directory to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -143,6 +148,9 @@ class TriagePredictionService:
     
     def _load_shap_background(self):
         """Load background data for SHAP explanations"""
+        if not SHAP_AVAILABLE:
+            print("⚠ SHAP library not available — skipping SHAP background loading.")
+            return
         try:
             if os.path.exists(self.shap_background_path):
                 self.shap_background_data = pd.read_csv(self.shap_background_path)
@@ -473,8 +481,23 @@ class TriagePredictionService:
                 # Get prediction probabilities for confidence
                 try:
                     probabilities = self.ml_model.predict_proba(ml_features)[0]
-                    confidence = float(probabilities[ml_prediction_0indexed])
-                except:
+                    # ml_prediction_0indexed could be an int or numpy type
+                    pred_idx = int(ml_prediction_0indexed)
+                    if pred_idx < len(probabilities):
+                        confidence = float(probabilities[pred_idx])
+                    else:
+                        # Find the probability for the predicted class from model's classes_
+                        class_list = list(self.ml_model.classes_)
+                        if pred_idx in class_list:
+                            confidence = float(probabilities[class_list.index(pred_idx)])
+                        else:
+                            confidence = float(max(probabilities))
+                    print(f"   Probabilities: {probabilities}")
+                    print(f"   Predicted index: {pred_idx}, Confidence: {confidence:.3f}")
+                except Exception as e:
+                    print(f"⚠ predict_proba failed: {e}")
+                    import traceback
+                    traceback.print_exc()
                     confidence = 0.75  # Default confidence if probabilities not available
                 
                 # Compute SHAP values for explanation
