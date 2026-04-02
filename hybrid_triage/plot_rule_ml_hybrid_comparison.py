@@ -81,7 +81,9 @@ def main() -> None:
             weight="bold",
         )
 
-    output_path = base_dir / "rule_ml_hybrid_accuracy_comparison.png"
+    visuals_dir = base_dir.parent / "visuals"
+    visuals_dir.mkdir(parents=True, exist_ok=True)
+    output_path = visuals_dir / "rule_ml_hybrid_accuracy_comparison.png"
     plt.tight_layout()
     fig.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"Saved graph to: {output_path}")
