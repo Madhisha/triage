@@ -31,6 +31,39 @@ def merge_classes(y):
     return y.replace({4: 3, 5: 3})
 
 
+def validate_rule_ml_alignment(rule_df, ml_df, min_match=0.99):
+    """
+    Validate that rule-based and ML test files are row-aligned.
+
+    This script assigns rule-based routing from rule_df and ML predictions from
+    ml_df by index. If row order differs, evaluation becomes invalid.
+    """
+    if len(rule_df) != len(ml_df):
+        raise ValueError(
+            f"Row count mismatch: rule_df={len(rule_df)}, ml_df={len(ml_df)}"
+        )
+
+    if 'acuity' not in rule_df.columns or 'acuity' not in ml_df.columns:
+        raise ValueError("Both datasets must contain 'acuity' for alignment checks.")
+
+    y_rule = merge_classes(rule_df['acuity']).reset_index(drop=True)
+    y_ml = merge_classes(ml_df['acuity']).reset_index(drop=True)
+    rowwise_match = (y_rule == y_ml).mean()
+
+    print("\nAlignment check (rule_test vs ml_test):")
+    print(f"  Row-wise merged-label match: {rowwise_match:.4f}")
+    print(f"  Rule label distribution: {y_rule.value_counts().sort_index().to_dict()}")
+    print(f"  ML label distribution  : {y_ml.value_counts().sort_index().to_dict()}")
+
+    if rowwise_match < min_match:
+        raise ValueError(
+            "rule_test.csv and ml_processed_test.csv are not row-aligned. "
+            f"Row-wise label match={rowwise_match:.4f} < {min_match:.2f}. "
+            "Use the same patient-level split/order for both pipelines (or include "
+            "a stable patient ID and join before evaluation)."
+        )
+
+
 def load_stacking_model(model_path):
     """Load pre-trained stacking ensemble model"""
     if not os.path.exists(model_path):
@@ -59,6 +92,18 @@ def apply_hybrid_triage(rule_df, ml_df, stacking_model):
     # Apply rule-based triage to all samples
     print("\nApplying NEWS2 rule-based triage...")
     rule_preds = rule_df.apply(lambda row: rule_based_triage(row), axis=1)
+
+    # Determine how to map ML predictions into triage labels [1, 2, 3]
+    model_classes = list(getattr(stacking_model, 'classes_', []))
+    if model_classes == [0, 1, 2]:
+        ml_label_shift = 1
+    elif model_classes == [1, 2, 3]:
+        ml_label_shift = 0
+    else:
+        raise ValueError(
+            f"Unsupported stacking model classes: {model_classes}. "
+            "Expected [0,1,2] or [1,2,3]."
+        )
     
     # Identify critical cases (class 1)
     critical_mask = (rule_preds == 1)
@@ -83,7 +128,7 @@ def apply_hybrid_triage(rule_df, ml_df, stacking_model):
         print(f"\nApplying ML (Stacking LR) to {n_ml} non-critical samples...")
         X_non_critical = X_ml[~critical_mask]
         ml_preds_raw = stacking_model.predict(X_non_critical)
-        ml_preds = ml_preds_raw + 1  # Convert 0-indexed to 1-indexed
+        ml_preds = (ml_preds_raw + ml_label_shift).astype(int)
         final_preds[~critical_mask] = ml_preds
         source[~critical_mask] = 'ML'
     
@@ -296,6 +341,9 @@ def main():
     
     print(f"  Rule test shape: {rule_test.shape}")
     print(f"  ML test shape: {ml_test.shape}")
+
+    # Guard against invalid hybrid evaluation due to row-order mismatch.
+    validate_rule_ml_alignment(rule_test, ml_test)
     
     # Extract true labels and merge classes
     y_true = merge_classes(rule_test['acuity'])

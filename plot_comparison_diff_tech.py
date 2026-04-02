@@ -42,7 +42,7 @@ def main() -> None:
 
 	fig.tight_layout()
 
-	output_dir = Path(__file__).resolve().parent / "visuals" / "images"
+	output_dir = Path(__file__).resolve().parent / "visuals"
 	output_dir.mkdir(parents=True, exist_ok=True)
 	output_path = output_dir / "comparison_diff_tech.png"
 	fig.savefig(output_path, dpi=300, bbox_inches="tight")

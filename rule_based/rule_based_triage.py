@@ -237,8 +237,27 @@ def evaluate_rule_based_model(df, true_label_col='acuity'):
     return {
         'accuracy': accuracy,
         'confusion_matrix': conf_matrix,
-        'classification_report': class_report
+        'classification_report': class_report,
+        'y_true': y_true,
+        'y_pred': y_pred
     }
+
+
+def build_evaluation_text(dataset_name, metrics):
+    """Build text block for one dataset's evaluation results."""
+    lines = [
+        "=" * 70,
+        f"{dataset_name.upper()} SET EVALUATION",
+        "=" * 70,
+        f"Accuracy: {metrics['accuracy']:.4f}",
+        "",
+        "Confusion Matrix (labels [1,2,3]):",
+        str(metrics['confusion_matrix']),
+        "",
+        "Classification Report:",
+        metrics['classification_report']
+    ]
+    return "\n".join(lines)
 
 
 # Example usage
@@ -246,6 +265,8 @@ if __name__ == "__main__":
     import os
     
     data_dir = "rule_processed_data"
+    output_txt = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rule_based_results.txt")
+    report_sections = []
     
     print("="*70)
     print("RULE-BASED TRIAGE EVALUATION (NEWS2)")
@@ -266,6 +287,7 @@ if __name__ == "__main__":
     print("TRAINING SET EVALUATION")
     print("=" * 70)
     metrics = evaluate_rule_based_model(train_df_with_predictions)
+    report_sections.append(build_evaluation_text("training", metrics))
     
     # Show some examples
     print("\n" + "=" * 60)
@@ -274,6 +296,10 @@ if __name__ == "__main__":
     sample_cols = ['temperature', 'heartrate', 'resprate', 'o2sat', 'sbp', 
                    'news2_total_score', 'news2_max_score', 'rule_based_prediction', 'acuity']
     print(train_df_with_predictions[sample_cols].head(15))
+    report_sections.append("\n" + "=" * 60)
+    report_sections.append("SAMPLE PREDICTIONS (TRAIN)")
+    report_sections.append("=" * 60)
+    report_sections.append(train_df_with_predictions[sample_cols].head(15).to_string(index=False))
     
     # Test on validation set
     print("\n" + "=" * 70)
@@ -283,11 +309,16 @@ if __name__ == "__main__":
     print(f"Valid shape: {valid_df.shape}")
     valid_df_with_predictions = apply_rule_based_triage(valid_df)
     metrics_valid = evaluate_rule_based_model(valid_df_with_predictions)
+    report_sections.append(build_evaluation_text("validation", metrics_valid))
     
     print("\n" + "=" * 60)
     print("SAMPLE PREDICTIONS (VALID)")
     print("=" * 60)
     print(valid_df_with_predictions[sample_cols].head(15))
+    report_sections.append("\n" + "=" * 60)
+    report_sections.append("SAMPLE PREDICTIONS (VALID)")
+    report_sections.append("=" * 60)
+    report_sections.append(valid_df_with_predictions[sample_cols].head(15).to_string(index=False))
     
     # Test on test set
     print("\n" + "=" * 70)
@@ -297,11 +328,21 @@ if __name__ == "__main__":
     print(f"Test shape: {test_df.shape}")
     test_df_with_predictions = apply_rule_based_triage(test_df)
     metrics_test = evaluate_rule_based_model(test_df_with_predictions)
+    report_sections.append(build_evaluation_text("test", metrics_test))
     
     print("\n" + "=" * 60)
     print("SAMPLE PREDICTIONS (TEST)")
     print("=" * 60)
     print(test_df_with_predictions[sample_cols].head(15))
+    report_sections.append("\n" + "=" * 60)
+    report_sections.append("SAMPLE PREDICTIONS (TEST)")
+    report_sections.append("=" * 60)
+    report_sections.append(test_df_with_predictions[sample_cols].head(15).to_string(index=False))
+
+    # Save all results to text file in this directory.
+    with open(output_txt, 'w', encoding='utf-8') as f:
+        f.write("\n\n".join(report_sections))
+    print(f"\nSaved results to: {output_txt}")
     
     print("\n" + "="*70)
     print("✅ Rule-based triage evaluation complete!")
