@@ -163,7 +163,7 @@ class TriagePredictionService:
                 if self.ml_model is not None:
                     print("  Initializing SHAP explainer...")
                     self.shap_explainer = shap.Explainer(
-                        self._predict_proba_model,
+                        self._predict_proba_for_shap,
                         self.shap_background_data
                     )
                     print("  ✓ SHAP explainer ready")
@@ -173,6 +173,28 @@ class TriagePredictionService:
         except Exception as e:
             print(f"⚠ Error loading SHAP background: {e}")
             print("  SHAP explanations will not be available.")
+
+
+    def _to_model_input(self, X: Any):
+        """Convert DataFrame-like input to NumPy to match training-time estimator input."""
+        if hasattr(X, 'values'):
+            return X.values
+        return np.asarray(X)
+
+
+    def _model_predict(self, X: Any):
+        """Predict classes using model input format consistent with training."""
+        return self.ml_model.predict(self._to_model_input(X))
+
+
+    def _model_predict_proba(self, X: Any):
+        """Predict probabilities using model input format consistent with training."""
+        return self.ml_model.predict_proba(self._to_model_input(X))
+
+
+    def _predict_proba_for_shap(self, X: Any):
+        """SHAP callback wrapper that avoids sklearn feature-name warnings."""
+        return self._model_predict_proba(X)
     
     
     def _prepare_rule_based_features(self, patient_data: Dict) -> pd.Series:
@@ -257,25 +279,6 @@ class TriagePredictionService:
             ml_features = ml_features[self.feature_order]
         
         return ml_features
-
-
-    def _to_model_input(self, features: Any) -> np.ndarray:
-        """Convert tabular input to ndarray to match model training input format."""
-        if isinstance(features, pd.DataFrame):
-            return features.to_numpy()
-        if isinstance(features, pd.Series):
-            return features.to_frame().T.to_numpy()
-        return np.asarray(features)
-
-
-    def _predict_model(self, features: Any) -> np.ndarray:
-        """Model prediction wrapper using ndarray input to avoid sklearn name warnings."""
-        return self.ml_model.predict(self._to_model_input(features))
-
-
-    def _predict_proba_model(self, features: Any) -> np.ndarray:
-        """Probability prediction wrapper using ndarray input to avoid sklearn name warnings."""
-        return self.ml_model.predict_proba(self._to_model_input(features))
     
     
     def _compute_shap_values(self, ml_features: pd.DataFrame) -> pd.DataFrame:
@@ -293,7 +296,7 @@ class TriagePredictionService:
         
         try:
             # Compute SHAP values
-            shap_values = self.shap_explainer(self._to_model_input(ml_features))
+            shap_values = self.shap_explainer(ml_features)
             
             # Get the SHAP values for the predicted class
             # shap_values.values shape: (1, n_features, n_classes)
@@ -313,26 +316,6 @@ class TriagePredictionService:
         except Exception as e:
             print(f"⚠ Error computing SHAP values: {e}")
             return None
-
-
-    def _normalize_prediction_class(self, raw_prediction: Any) -> int:
-        """
-        Normalize model output to service class labels (1, 2, 3).
-
-        Some models output classes as [1,2,3], while others output [0,1,2].
-        This method safely handles both representations.
-        """
-        pred = int(raw_prediction)
-        if pred in self.class_labels:
-            return pred
-
-        # Backward-compatible fallback for zero-indexed outputs.
-        shifted = pred + 1
-        if shifted in self.class_labels:
-            return shifted
-
-        # Unknown class: return as-is and let caller handle a safe label fallback.
-        return pred
     
     
     def _generate_news2_explanation(self, patient_data: Dict, 
@@ -429,7 +412,7 @@ class TriagePredictionService:
             Formatted explanation string
         """
         explanation = f"**Machine Learning Assessment**\n\n"
-        explanation += f"Model: Stacking Ensemble (Random Forest + LightGBM + Neural Network)\n"
+        explanation += f"Model: Stacking Ensemble (Random Forest + XGBoost + Neural Network)\n"
         explanation += f"Prediction Confidence: {confidence:.1%}\n\n"
         
         # Chief complaint
@@ -464,8 +447,8 @@ class TriagePredictionService:
         explanation += f"\n**Model Decision:**\n"
         explanation += f"Based on the ensemble of multiple machine learning algorithms, "
         explanation += f"the patient's vital signs and clinical presentation suggest "
-        class_label = self.class_labels.get(int(prediction_class), f"Unknown ({int(prediction_class)})")
-        explanation += f"**{class_label}** priority level.\n"
+        prediction_label = self.class_labels.get(prediction_class, f"Unknown (Class {prediction_class})")
+        explanation += f"**{prediction_label}** priority level.\n"
         
         return explanation
     
@@ -515,27 +498,45 @@ class TriagePredictionService:
             # Non-critical case - use ML model if available
             if self.ml_model is not None:
                 ml_features = self._prepare_ml_features(patient_data)
-                raw_prediction = self._predict_model(ml_features)[0]
-                final_prediction = self._normalize_prediction_class(raw_prediction)
+                raw_ml_prediction = int(self._model_predict(ml_features)[0])
+
+                # Normalize based on model's trained class labels.
+                # Some models are trained on [1,2,3], others on [0,1,2].
+                model_classes = list(getattr(self.ml_model, 'classes_', []))
+                if raw_ml_prediction in self.class_labels:
+                    final_prediction = raw_ml_prediction
+                elif set(model_classes) == {0, 1, 2} and raw_ml_prediction in {0, 1, 2}:
+                    final_prediction = raw_ml_prediction + 1
+                elif raw_ml_prediction in {0, 1, 2}:
+                    # Fallback for models without classes_ metadata
+                    final_prediction = raw_ml_prediction + 1
+                else:
+                    final_prediction = raw_ml_prediction
                 
                 # Get prediction probabilities for confidence
                 try:
-                    probabilities = self._predict_proba_model(ml_features)[0]
-                    pred_class = int(raw_prediction)
+                    probabilities = self._model_predict_proba(ml_features)[0]
+                    class_list = list(getattr(self.ml_model, 'classes_', []))
 
-                    # Prefer explicit class ordering from sklearn model.
-                    if hasattr(self.ml_model, 'classes_'):
-                        class_list = list(self.ml_model.classes_)
-                        if pred_class in class_list:
-                            confidence = float(probabilities[class_list.index(pred_class)])
+                    if class_list and len(class_list) == len(probabilities):
+                        if raw_ml_prediction in class_list:
+                            confidence = float(probabilities[class_list.index(raw_ml_prediction)])
+                        elif final_prediction in class_list:
+                            confidence = float(probabilities[class_list.index(final_prediction)])
+                        elif 0 <= raw_ml_prediction < len(probabilities):
+                            confidence = float(probabilities[raw_ml_prediction])
                         else:
                             confidence = float(max(probabilities))
-                    elif 0 <= pred_class < len(probabilities):
-                        confidence = float(probabilities[pred_class])
+                    elif 0 <= raw_ml_prediction < len(probabilities):
+                        confidence = float(probabilities[raw_ml_prediction])
                     else:
                         confidence = float(max(probabilities))
+
                     print(f"   Probabilities: {probabilities}")
-                    print(f"   Predicted class: {pred_class}, Confidence: {confidence:.3f}")
+                    print(
+                        f"   Raw ML prediction: {raw_ml_prediction}, "
+                        f"Final class: {final_prediction}, Confidence: {confidence:.3f}"
+                    )
                 except Exception as e:
                     print(f"⚠ predict_proba failed: {e}")
                     import traceback
@@ -559,10 +560,9 @@ class TriagePredictionService:
                 )
         
         # Step 3: Prepare result
-        prediction_label = self.class_labels.get(int(final_prediction), f"Unknown ({int(final_prediction)})")
         result = {
             'prediction_class': int(final_prediction),
-            'prediction_label': prediction_label,
+            'prediction_label': self.class_labels.get(final_prediction, f'Unknown (Class {final_prediction})'),
             'confidence': float(confidence),
             'prediction_source': prediction_source,
             'explanation': explanation,
